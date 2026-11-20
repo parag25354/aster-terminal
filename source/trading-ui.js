@@ -30,7 +30,7 @@ function deskSymbols() {
 
 function quoteCell(c, quote) {
   if (!quote) return '—';
-  const movement=sampleDayMove(c,quote);
+  const movement=investMove(c,quote);
   const extra = movement!==null
     ? '<small class="'+tone(movement)+'">'+signed(movement)+'</small>'
     : !quote.recent ? '<small>Last quote</small>' : '';
@@ -234,8 +234,7 @@ function showReview(result, message='') {
 function openReview() {
   try {
     if(sampleMode && market.replay) {
-      clearInterval(market.replay);
-      market.replay=null;
+      pauseReplay();
       renderStatus();
     }
     const result = basketPlan();
@@ -368,7 +367,7 @@ function startDesk() {
   });
   $('practice-basket').addEventListener('click',()=>{
     if(!sampleMode || desk.legs.length)return;
-    desk.legs=[{symbol:'ATLS',side:'buy',quantity:'8'},{symbol:'GRID',side:'buy',quantity:'6'}];
+    desk.legs=[{symbol:shockChip,side:'buy',quantity:'8'},{symbol:shockCloud,side:'buy',quantity:'6'}];
     desk.multiplier='1';
     saveDeskDraft();
     renderBasketRows();
@@ -414,7 +413,7 @@ const sampleAnchor=Date.parse('2026-11-20T12:15:00+05:30');
 const timelineSpan={'1H':3_600_000,'1D':10_800_000,'1M':31*86_400_000,'1Y':365*86_400_000};
 
 function articleTime(article) {
-  if(!sampleMode)return Date.parse(article.time);
+  if(!legacyMode)return Date.parse(article.time);
   const [,day,month,hour,minute]=article.time.match(/^(\d+) ([A-Za-z]{3}) · (\d\d):(\d\d)$/) ?? [];
   if(!day)return NaN;
   return Date.parse(day+' '+month+' 2026 '+hour+':'+minute+' GMT+0530');
@@ -442,14 +441,36 @@ function renderTimeline() {
   $('desk-news-period').textContent=scope;
   $('desk-news-list').innerHTML=list.length ? list.map(article=>{
     const effect=article.impacts[desk.chartSymbol][0];
-    const time=sampleMode?article.time:timeLabel(article.time);
+    const time=legacyMode?article.time:timeLabel(article.time);
     return '<button class="desk-order timeline-story" type="button" data-timeline-article="'+safeText(article.id)+'"><small>'+
       safeText(time)+'</small><strong class="'+effect+'">'+safeText(article.title)+'</strong><span class="desk-order-detail">'+impactLabels[effect]+'</span></button>';
   }).join('') : '<p class="desk-empty">No company headlines in this timeframe.</p>';
   drawDeskChart();
 }
 
+function replayTimeline(c,period) {
+  const currentTick=market.ticks, openTick=(replayOpen-replayStart)/replayStep;
+  const startTick=period==='1H'?Math.max(openTick,currentTick-30):openTick;
+  const session=Array.from({length:currentTick-startTick+1},(_,index)=>{
+    const tick=startTick+index;
+    return {time:tapeTime(tick),value:replayPrice(c,tick)};
+  });
+  if(period==='1H' || period==='1D')return session;
+  const count=period==='1M'?31:90;
+  const horizon=timelineSpan[period];
+  const final=session[0].value;
+  const opening=final/(1+(c.change*(period==='1M'?2.6:8.5))/100);
+  const noise=randomStream(companySeed(c)+period.charCodeAt(1)*97);
+  const history=Array.from({length:count},(_,i)=>{
+    const ratio=i/count;
+    return {time:replayOpen-horizon*(1-ratio),
+      value:opening+(final-opening)*ratio+Math.sin(Math.PI*ratio)*(noise()-.5)*final*.025};
+  });
+  return [...history,...session];
+}
+
 function sampleTimeline(c, period = desk.period) {
+  if(replayMode)return hasMarketSymbol(c)?replayTimeline(c,period):[];
   const end=sampleAnchor+market.ticks*30000;
   const start=end-timelineSpan[period];
   const quote=mark(c);
@@ -466,11 +487,11 @@ function sampleTimeline(c, period = desk.period) {
 
 function loadDeskChart() {
   if($('trade-desk').hidden)return;
-  if(!desk.chartSymbol)desk.chartSymbol=deskSymbols()[0]?.id;
+  if(!desk.chartSymbol)desk.chartSymbol=legacyMode?deskSymbols()[0]?.id:'NVDA';
   const c=companies.get(desk.chartSymbol);
   if(!c)return;
   const request=++desk.chartRequest;
-  $('desk-chart-name').textContent=c.name+' · '+c.id+' · '+(sampleMode?'Simulation':'Market history');
+  $('desk-chart-name').textContent=c.name+' · '+c.id+' · '+(replayMode?'Simulated tape':sampleMode?'Simulation':'Market history');
   const quote=mark(c);
   $('desk-chart-cursor').textContent=quote?money(quote.mid):'';
   $('desk-chart-links').innerHTML=companyHighlights(c).slice(0,3).map(link=>{
@@ -478,15 +499,22 @@ function loadDeskChart() {
     return '<button class="desk-chart-link" type="button" data-company="'+other.id+'"><i class="dot '+link.type+'"></i>'+safeText(other.name)+'</button>';
   }).join('');
   loadNews(c);
-  if(sampleMode){
-    desk.chart=sampleTimeline(c);
+  const exchange=publicExchange(), exchangeHost=$('desk-exchange-chart');
+  exchangeHost.hidden=!exchange;
+  $('desk-price-area').hidden=exchange;
+  $('desk-periods').hidden=exchange;
+  $('desk-replay-cta').hidden=sampleMode || (regularSession().open && !exchange && market.status?.feed!=='delayed_sip');
+  $('desk-replay-cta').href=modeLink('replay',{page:'trading',symbol:c.id});
+  if(exchange) {
+    desk.chart=[];
     desk.chartMessage='';
+    mountExchangeChart(exchangeHost,c.id,desk.period);
     renderTimeline();
     return;
   }
-  if(!market.status?.configured) {
-    desk.chart=[];
-    desk.chartMessage='Live chart needs market data credentials. The company’s dated disclosures are still available.';
+  if(sampleMode){
+    desk.chart=sampleTimeline(c);
+    desk.chartMessage='';
     renderTimeline();
     return;
   }

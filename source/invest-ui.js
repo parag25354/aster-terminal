@@ -12,8 +12,8 @@ const goalAmount = amount => money(amount).replace(/\.00$/, '');
 const listedCompanies = () => [...companies.values()].filter(hasMarketSymbol);
 function investMove(company,quote) {
   if (sampleMode) return sampleDayMove(company,quote);
-  const prior = market.histories[company.symbol+'/daily']?.bars.at(-1)?.close;
-  return quote?.recent && prior > 0 ? (quote.mid/prior-1)*100 : null;
+  const prior = quote?.previousClose;
+  return prior > 0 ? (quote.mid/prior-1)*100 : null;
 }
 
 function readGoals() {
@@ -22,7 +22,7 @@ function readGoals() {
     if (Array.isArray(data)) return data;
   } catch {}
   return defaultGoals.map(goal => Object.fromEntries(Object.entries(goal).map(([key,value]) =>
-    [key, typeof value === 'number' && !sampleMode ? value/100 : value])));
+    [key, typeof value === 'number' && !legacyMode ? value/100 : value])));
 }
 
 function renderGoals() {
@@ -103,8 +103,14 @@ function renderInvestOverview() {
   if ($('invest-periods').querySelector('[aria-pressed="true"]')?.dataset.investPeriod !== period) {
     $('invest-periods').innerHTML = investPeriodButtons('data-invest-period',period);
   }
-  $('invest-chart-title').textContent = sampleMode ? 'Market 500' : 'SPY';
-  $('invest-index-label').textContent = sampleMode ? 'FICTIONAL MARKET BENCHMARK' : 'MARKET BENCHMARK';
+  const exchange=publicExchange(), exchangeHost=$('overview-exchange-chart');
+  exchangeHost.hidden=!exchange;
+  canvas.parentElement.hidden=exchange;
+  $('invest-chart-range').hidden=exchange;
+  $('invest-periods').hidden=exchange;
+  $('invest-chart-title').textContent = legacyMode ? 'Market 500' : 'SPY';
+  $('invest-index-label').textContent = legacyMode ? 'FICTIONAL MARKET BENCHMARK' :
+    replayMode ? 'BENCHMARK · SIMULATED PRICES' : exchange ? 'MARKET BENCHMARK · DELAYED' : 'MARKET BENCHMARK · ALPACA';
   const render = (points,message='') => {
     if (request !== invest.overviewRequest || invest.page !== 'overview') return;
     canvas.investPoints = points;
@@ -114,17 +120,20 @@ function renderInvestOverview() {
     $('invest-index-value').textContent = last ? (sampleMode ? last.value.toFixed(2) : money(last.value)) : '—';
     $('invest-index-change').className = tone(change);
     $('invest-index-change').textContent = change === null ? '' : signed(change);
-    const time = point => new Date(point.time).toLocaleString('en-IN',period==='1D'||period==='1H'
-      ? {hour:'2-digit',minute:'2-digit',timeZone:'Asia/Kolkata'} : {month:'short',day:'numeric',year:'numeric',timeZone:'Asia/Kolkata'});
+    const timeZone=legacyMode?'Asia/Kolkata':'America/New_York';
+    const time = point => new Date(point.time).toLocaleString('en-US',period==='1D'||period==='1H'
+      ? {hour:'2-digit',minute:'2-digit',timeZone,timeZoneName:'short'} : {month:'short',day:'numeric',year:'numeric',timeZone});
     $('invest-chart-range').innerHTML = first ? '<span>'+time(first)+'</span><span>'+time(last)+'</span>' : '';
     $('invest-chart-empty').hidden = Boolean(first);
     $('invest-chart-empty').textContent = message;
   };
   if (sampleMode) {
-    const series = ['ATLS','GRID','LUMN'].map(id => sampleTimeline(companies.get(id),period));
+    const series = (replayMode?['SPY']:['ATLS','GRID','LUMN']).map(id => sampleTimeline(companies.get(id),period));
     render(series[0].map((point,i) => ({time:point.time,value:series.reduce((sum,points) => sum+points[i].value/points[0].value,0)*100/series.length})));
-  } else if (!market.status?.configured) {
-    render([],'Connect a market feed to show benchmark history.');
+  } else if (exchange) {
+    $('invest-index-value').textContent='';
+    $('invest-index-change').textContent='';
+    mountExchangeChart(exchangeHost,'SPY',period);
   } else {
     const kind = period === '1H' || period === '1D' ? 'intraday' : 'daily';
     getHistory('SPY',kind).then(bars => {
@@ -141,12 +150,14 @@ function renderInvestOverview() {
     '<button type="button" class="invest-mover" data-open-research="'+company.id+'"><span class="invest-mover-symbol">'+company.id+'</span>'+
     '<span><strong>'+safeText(company.name)+'</strong><small>'+safeText(company.sector)+'</small></span>'+
     '<strong class="'+tone(move)+'">'+signed(move)+'</strong></button>'
-  ).join('') : '<p class="invest-empty">Day moves are unavailable in this feed.</p>';
+  ).join('') : '<p class="invest-empty">'+(exchange?'Open Markets for the delayed quote board.':'Day moves will appear when a quote and previous close are available.')+'</p>';
 }
 
 function renderInvestTable() {
   const watchlist = invest.page === 'watchlist';
   const saved = readWatch();
+  const exchange=publicExchange();
+  $('invest-market-filters').hidden=exchange;
   const rows = listedCompanies().map(company => {
     const quote = mark(company);
     return {company,quote,move:investMove(company,quote)};
@@ -165,14 +176,17 @@ function renderInvestTable() {
   }
   outlet.innerHTML = '<p class="invest-result-count">'+rows.length+(rows.length===1?' instrument':' instruments')+'</p>'+
     '<div class="invest-table-wrap"><table class="invest-table"><thead><tr><th scope="col">Instrument</th><th scope="col">Sector</th>'+
-    '<th scope="col">Midpoint</th><th scope="col">Day change</th><th scope="col">Watch</th><th scope="col">Order</th></tr></thead><tbody>'+
+    (exchange?'<th scope="col">Exchange chart</th>':'<th scope="col">Midpoint</th><th scope="col">Day change</th>')+
+    '<th scope="col">Watch</th><th scope="col">Order</th></tr></thead><tbody>'+
     rows.map(({company,quote,move}) => {
       const {id,name,sector} = company, pinned = saved.includes(id);
       return '<tr><td><button type="button" class="invest-company-button" data-open-research="'+id+'">'+safeText(name)+'<small>'+id+'</small></button></td>'+
-        '<td>'+safeText(sector)+'</td><td>'+(quote?money(quote.mid):'—')+'</td><td class="'+tone(move)+'">'+(move===null?'—':signed(move))+'</td>'+
+        '<td>'+safeText(sector)+'</td>'+
+        (exchange?'<td><button type="button" class="invest-text-button" data-open-research="'+id+'" data-research-open-tab="chart">View chart</button></td>':
+          '<td>'+(quote?money(quote.mid):'—')+'</td><td class="'+tone(move)+'">'+(move===null?'—':signed(move))+'</td>')+
         '<td><button type="button" class="invest-watch-toggle" data-invest-watch="'+id+'" aria-pressed="'+pinned+'" aria-label="'+
         (pinned?'Remove '+safeText(name)+' from watchlist':'Add '+safeText(name)+' to watchlist')+'">'+(pinned?'★':'☆')+'</button></td>'+
-        '<td><button type="button" class="invest-trade" data-invest-trade="'+id+'">Trade</button></td></tr>';
+        '<td>'+(exchange?replayAnchorLink(id):'<button type="button" class="invest-trade" data-invest-trade="'+id+'">Trade</button>')+'</td></tr>';
     }).join('')+'</tbody></table></div>';
 }
 
@@ -186,9 +200,11 @@ function switchInvestPage(name) {
   const website = investPages.includes(name);
   document.body.dataset.website = String(website);
   for (const page of investPages) $('invest-'+page).hidden = name !== page;
-  for (const id of ['ticker-strip','account-metrics','market-status']) $(id).hidden = website;
+  for (const id of ['ticker-strip','account-metrics']) $(id).hidden = website;
+  $('market-status').hidden=legacyMode && website;
   if (name === 'goals' || name === 'overview') renderGoals();
   refreshInvest();
+  mountQuotesBoard();
 }
 
 function applyAsterTheme(theme) {
@@ -202,6 +218,11 @@ function applyAsterTheme(theme) {
   });
   paintGraph();
   drawDeskChart();
+  if (activeMode && !sampleMode) {
+    refreshInvest();
+    mountQuotesBoard();
+    if (!$('trade-desk').hidden)loadDeskChart();
+  }
   if (state.tab === 'performance') renderPerformance(companies.get(state.selected));
 }
 
@@ -218,7 +239,7 @@ function startInvest() {
   }).observe($('invest-market-chart'));
   document.querySelector('[data-home-link]').addEventListener('click',event => {
     event.preventDefault();
-    openWorkspace('overview');
+    if(activeMode)openWorkspace('overview');
   });
   $('invest-market-sector').innerHTML = '<option value="">All sectors</option>'+
     [...new Set(listedCompanies().map(company => company.sector))].sort().map(sector => '<option>'+safeText(sector)+'</option>').join('');

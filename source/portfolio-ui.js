@@ -4,7 +4,7 @@ const portfolioView={tab:'holdings',sort:'symbol',search:'',initialized:false};
 const localAccounts=()=>{
   try {
     const list=JSON.parse(localStorage.getItem(stateKey('accounts')));
-    return [{id:'default',name:sampleMode?'Simulation account':'Live paper account'},...(Array.isArray(list)?list.filter(account=>
+    return [{id:'default',name:replayMode?'Market Replay account':legacyMode?'Simulation account':'Live paper account'},...(Array.isArray(list)?list.filter(account=>
       account && /^[a-f0-9-]{36}$/i.test(account.id) && typeof account.name==='string').slice(0,11):[])];
   } catch {return [{id:'default',name:'Paper account'}];}
 };
@@ -30,11 +30,10 @@ function portfolioSnapshot(wallet) {
     const company=companies.get(id);
     const quote=company ? mark(company) : null;
     const value=quote?paper.cents(quote.mid)*p.quantity:null;
-    const history=company?.symbol && market.histories[company.symbol+'/daily']?.bars;
     const prior=sampleMode
       ? (company?.change!==undefined && company.price!==undefined ? company.price/(1+company.change/100) : null)
-      : history?.at(-1)?.close;
-    const day=quote?.recent && prior ? (quote.mid/prior-1)*100 : null;
+      : quote?.previousClose;
+    const day=quote && prior ? (quote.mid/prior-1)*100 : null;
     const dayPnl=day===null?null:(paper.cents(quote.mid)-paper.cents(prior))*p.quantity;
     return {id,company,...p,value,day,dayPnl,pnl:value===null?null:value-p.cost,quote};
   });
@@ -146,17 +145,7 @@ function switchPaperAccount(id) {
   loadDeskDraft();
   renderPortfolio();
   if(!$('trade-desk').hidden)showTrading();
-  loadPortfolioDaily();
   $('announcer').textContent='Switched to '+activePaperAccount().name+'.';
-}
-function loadPortfolioDaily() {
-  if(sampleMode || !market.status?.configured)return;
-  let held;
-  try{held=Object.keys(readWallet().positions);}catch{return;}
-  for (const id of held) {
-    const c=companies.get(id);
-    if(c?.symbol)getHistory(c.symbol,'daily').then(()=>{renderPortfolio();}).catch(()=>{});
-  }
 }
 function exportPortfolio() {
   const wallet=readWallet(), stats=portfolioSnapshot(wallet);
@@ -173,7 +162,7 @@ function exportPortfolio() {
   const file=new Blob([rows.map(row=>row.map(escapeCell).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8'});
   const link=document.createElement('a');
   link.href=URL.createObjectURL(file);
-  link.download=(sampleMode?'aster-simulation-':'aster-live-')+(orders?'orders.csv':'holdings.csv');
+  link.download=('aster-'+activeMode+'-')+(orders?'orders.csv':'holdings.csv');
   link.click();
   setTimeout(()=>URL.revokeObjectURL(link.href),5000);
 }

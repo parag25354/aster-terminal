@@ -55,7 +55,7 @@ function researchNews(c) {
   if (!news.length)return '<p class="desk-empty">There are no headlines linked to this company.</p>';
   return '<div class="research-news-grid">'+news.map(article=>{
     const effect=article.impacts[c.id][0];
-    const timestamp=sampleMode?article.time:timeLabel(article.time);
+    const timestamp=legacyMode?article.time:timeLabel(article.time);
     return '<article class="research-news-card"><small>'+safeText(timestamp)+(article.source?' · '+safeText(article.source):'')+'</small>'+
       '<button type="button" class="'+effect+'" data-research-story="'+safeText(article.id)+'">'+safeText(article.title)+'</button>'+
       '<p>'+safeText(article.impacts[c.id][1])+'</p><span class="impact-tag '+effect+'">'+impactLabels[effect]+'</span></article>';
@@ -67,23 +67,23 @@ function marketFacts(c) {
     ['Instrument',companyInstrument(c)],['Sector',c.sector],
     ['Midpoint',quote?money(quote.mid):pricePlaceholder(c)],
     ['Bid / ask',quote?money(quote.bid)+' / '+money(quote.ask):'—'],
-    ['Relationships',String(linksCount(c))],['Data source',sampleMode?'Offline simulation':quote?feedLabel(quote.feed):'Dated company disclosures']
+    ['Relationships',String(linksCount(c))],['Data source',replayMode?'Illustrative session':legacyMode?'Offline simulation':quote?feedLabel(quote.feed):'Dated disclosures and delayed exchange chart']
   ]);
 }
 function financeDetails(c) {
   const sample=sampleFinancials[c.id];
   const filed=reportedFinancials[c.id];
-  if(sampleMode && sample) {
+  if(legacyMode && sample) {
     return '<p class="desk-meta">Illustrative quarter · Fictional company figures</p>'+
       profileFacts([['Revenue',sample[0]],['Revenue growth YoY',sample[1]],['Operating margin',sample[2]]]);
   }
-  if(!sampleMode && filed) {
+  if(!legacyMode && filed) {
     return '<p class="desk-meta">'+safeText(filed.period)+'</p>'+profileFacts(filed.rows)+
       '<p class="profile-note"><a href="'+filed.url+'" target="_blank" rel="noopener noreferrer">Read the earnings release</a></p>';
   }
   const url=companyFilingLinks[c.id];
   return '<p class="desk-empty">A financial snapshot is unavailable for this entity.</p>'+
-    (!sampleMode&&url?'<p><a href="'+url+'" target="_blank" rel="noopener noreferrer">Open the issuer’s documents</a></p>':'');
+    (!legacyMode&&url?'<p><a href="'+url+'" target="_blank" rel="noopener noreferrer">Open the issuer’s documents</a></p>':'');
 }
 function researchPeers(c) {
   const peers=[...companies.values()].filter(item=>item.id!==c.id && item.group===c.group && hasMarketSymbol(item));
@@ -124,25 +124,33 @@ function renderResearch() {
   researchPanel.chartObserver?.disconnect();
   const request=++researchPanel.request;
   const mapped=links.filter(link=>link.to===c.id || link.from===c.id);
-  $('research-hero').innerHTML='<p class="eyebrow">'+safeText(c.id)+' · '+(sampleMode?'SIMULATION':'COMPANY RESEARCH')+'</p><h2 id="research-title">'+safeText(c.name)+'</h2><p class="dialog-copy">'+safeText(c.summary)+'</p>';
+  $('research-hero').innerHTML='<p class="eyebrow">'+safeText(c.id)+' · '+(legacyMode?'SIMULATION':replayMode?'COMPANY RESEARCH · REPLAY':'COMPANY RESEARCH')+'</p><h2 id="research-title">'+safeText(c.name)+'</h2><p class="dialog-copy">'+safeText(c.summary)+'</p>';
   $('research-tabs').querySelectorAll('[data-research-tab]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.researchTab===researchPanel.tab)));
   let content='';
   switch(researchPanel.tab) {
     case 'overview': {
       const relationships=companyHighlights(c).slice(0,3);
-      content=marketFacts(c)+'<div class="research-block"><h3>What to watch</h3><p class="dialog-copy">'+safeText(sampleMode?(c.downside||'Follow the company’s linked suppliers and investments to see how a shock could spread.'):liveProfileNotes[c.id])+'</p></div>'+
+      content=marketFacts(c)+'<div class="research-block"><h3>What to watch</h3><p class="dialog-copy">'+safeText((legacyMode?c.downside:liveProfileNotes[c.id]) ?? c.summary)+'</p></div>'+
         '<div class="research-block"><h3>Key connections</h3>'+relationships.map(link=>relationshipCard(c,link)).join('')+'</div>';
       break;
     }
-    case 'chart':
-      content = hasMarketSymbol(c) ?
-        '<div class="invest-pills" aria-label="Company chart timeframe">'+investPeriodButtons('data-research-period',researchPanel.period)+'</div>'+
-        '<div class="invest-stock-chart"><canvas id="research-chart" aria-label="Company price history" role="img"></canvas><p id="research-chart-message" hidden></p></div>'+
-        '<p class="desk-meta">'+(sampleMode?'Fictional price history':'Market price history')+'</p>'+
-        '<button type="button" class="invest-trade" data-invest-trade="'+c.id+'">Open paper order</button>' :
+    case 'chart': {
+      const chartable=hasMarketSymbol(c);
+      const exchange=publicExchange();
+      content = chartable ?
+        (exchange?'':'<div class="invest-pills" aria-label="Company chart timeframe">'+investPeriodButtons('data-research-period',researchPanel.period)+'</div>')+
+        (exchange?'<div id="research-exchange-chart" class="exchange-chart"></div>':
+          '<div class="invest-stock-chart"><canvas id="research-chart" aria-label="Company price history" role="img"></canvas><p id="research-chart-message" hidden></p></div>'+
+          '<p class="desk-meta">'+(sampleMode?'Simulated price history':'Market price history')+'</p>')+
+        (exchange?replayAnchorLink(c.id):'<button type="button" class="invest-trade" data-invest-trade="'+c.id+'">Open paper order</button>') :
         '<p class="desk-empty">'+safeText(companyInstrument(c))+' · No price series.</p>';
-      if (hasMarketSymbol(c)) requestAnimationFrame(() => loadResearchChart(c,request));
+      if (chartable) requestAnimationFrame(() => {
+        if(researchPanel.request!==request || !$('research-dialog').open)return;
+        if(exchange)mountExchangeChart($('research-exchange-chart'),c.id,researchPanel.period);
+        else loadResearchChart(c,request);
+      });
       break;
+    }
     case 'financials': content=financeDetails(c); break;
     case 'peers': content=researchPeers(c); break;
     case 'technicals': content=researchTechnicals(c,request); break;
@@ -160,8 +168,8 @@ function renderResearch() {
       content='<div class="research-block"><h3>Commercial deals</h3>'+
         (commercial.length?commercial.map(link=>relationshipCard(c,link)).join(''):'<p class="desk-empty">No commercial deals are mapped.</p>')+
         '</div><div class="research-block"><h3>Source documents</h3>'+
-        (issuer&&!sampleMode?'<p><a href="'+issuer+'" target="_blank" rel="noopener noreferrer">Open issuer filings and disclosures</a></p>':'')+
-        (documents.length?'<ul class="research-docs">'+documents.map(link=>'<li><a href="'+link.url+'" target="_blank" rel="noopener noreferrer">'+safeText(link.label)+'</a><small> '+safeText(link.date)+'</small></li>').join('')+'</ul>':'<p class="desk-meta">'+(sampleMode?'Simulation documents are represented by the dated events in this workspace.':'No further documents in this dataset.')+'</p>')+'</div>';
+        (issuer&&!legacyMode?'<p><a href="'+issuer+'" target="_blank" rel="noopener noreferrer">Open issuer filings and disclosures</a></p>':'')+
+        (documents.length?'<ul class="research-docs">'+documents.map(link=>'<li><a href="'+link.url+'" target="_blank" rel="noopener noreferrer">'+safeText(link.label)+'</a><small> '+safeText(link.date)+'</small></li>').join('')+'</ul>':'<p class="desk-meta">'+(legacyMode?'Simulation documents are represented by the dated events in this workspace.':'No further documents in this dataset.')+'</p>')+'</div>';
       break;
     }
   }
@@ -181,11 +189,18 @@ async function loadResearchChart(c, request) {
   if (request !== researchPanel.request || !$('research-dialog').open) return;
   const canvas = $('research-chart'), status = $('research-chart-message');
   canvas.investPoints = points;
-  researchPanel.chartObserver = new ResizeObserver(() => paintInvestChart(canvas,points));
+  researchPanel.chartObserver = new ResizeObserver(() => paintInvestChart(canvas,canvas.investPoints));
   researchPanel.chartObserver.observe(canvas);
   paintInvestChart(canvas,points);
   status.hidden = points.length > 1;
   status.textContent = message || 'Price history is unavailable.';
+}
+
+function updateReplayResearchChart() {
+  const chart=$('research-chart'), company=companies.get(researchPanel.symbol);
+  if(!chart || !company)return;
+  chart.investPoints=sampleTimeline(company,researchPanel.period);
+  paintInvestChart(chart,chart.investPoints);
 }
 
 document.getElementById('research-dialog').addEventListener('close',() => researchPanel.chartObserver?.disconnect());
@@ -193,7 +208,7 @@ document.addEventListener('click',event=>{
   const el=event.target.closest('button');
   if(!el)return;
   const {openResearch:target,researchTab,researchStory,company}=el.dataset;
-  if(target)openResearch(target);
+  if(target)openResearch(target,el.dataset.researchOpenTab || 'overview');
   if(researchTab){researchPanel.tab=researchTab;renderResearch();}
   if(el.dataset.researchPeriod){
     researchPanel.period=el.dataset.researchPeriod;

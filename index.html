@@ -6,7 +6,15 @@
 <meta name="theme-color" content="#0a0908">
 <meta name="description" content="Explore company and ETF relationships and trace simulated shocks through a portfolio.">
 <title>Aster Invest · Investing workspace</title>
-<script>try{document.documentElement.dataset.theme=localStorage.getItem('aster:theme')==='light'?'light':'dark'}catch{}</script>
+<script>
+'use strict';
+try {
+  document.documentElement.dataset.theme=localStorage.getItem('aster:theme')==='light'?'light':'dark';
+} catch {
+  // The default theme also works when browser storage is unavailable.
+}
+
+</script>
 <style>
 :root{color-scheme:dark;--bg:#0b100f;--panel:#111816;--line:#27332e;--soft:#a3b2a9;--text:#f1f6ed;--lime:#d1fa8b;--mint:#7cd8b2;--amber:#f1b765;--red:#ff9793;--violet:#bcadfb;--muted:#9da8a0;--radius:18px;--mono:ui-monospace,"SFMono-Regular",Consolas,monospace;--font:Inter,"Segoe UI",system-ui,sans-serif}
 *{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 47% 0,#202c21 0%,var(--bg) 44%);color:var(--text);font:16px/1.5 var(--font);min-width:300px}button,input{font:inherit}button{cursor:pointer}button:disabled{cursor:default;opacity:.4}button:focus-visible,a:focus-visible,input:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--lime);outline-offset:3px}button[aria-pressed=true]:focus-visible{outline-offset:2px}a{color:var(--lime)}h1,h2,h3,p{margin:0}button{color:inherit}button,a,input{touch-action:manipulation}[hidden]{display:none!important}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
@@ -810,13 +818,181 @@ body[data-website="true"] .offline-mode { background:#d4c3f7; color:#282035; }
   .node:hover .node-glyph { transform:scale(1.08); }
 }
 
+/* Startup and mode controls */
+body[data-mode="choose"] {
+  background:radial-gradient(ellipse 1050px 505px at 66% 4%,#071b35 0%,#080d17 53%,#080909 83%);
+}
+body[data-mode="choose"] .topbar { min-height:68px; }
+body[data-mode="choose"] .workspace-nav,body[data-mode="choose"] .mode-picker-link { display:none; }
+.mode-picker-link {
+  display:inline-flex;align-items:center;min-height:32px;padding:4px 10px;border-radius:8px;
+  border:1px solid #314972;background:#14213a;color:#c2d9ff;
+  text-decoration:none;font:700 12px var(--font);white-space:nowrap;
+}
+.mode-picker-link::after { content:"";width:6px;height:6px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(45deg);margin:-4px 0 0 8px; }
+.mode-picker-link:hover { border-color:#7caeff; }
+.session-gate { max-width:1184px;margin:0 auto;padding:clamp(24px,5.4vh,56px) clamp(16px,4vw,52px) 22px; }
+.gate-top { display:flex;justify-content:space-between;align-items:center;gap:12px; }
+.gate-market {
+  display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;max-width:100%;padding:6px 10px;border:1px solid #273b56;
+  border-radius:8px;background:#101b2c;color:#e1edff;font-size:.82rem;
+}
+.gate-market time { padding-left:8px;border-left:1px solid #3d5272;color:#adbedb;font-family:var(--mono); }
+.session-dot { width:7px;height:7px;border-radius:50%;background:#8cbaff;box-shadow:0 0 12px #73a9ff55;flex:none; }
+.gate-market[data-state=open] .session-dot { background:#63dcb3;box-shadow:0 0 12px #63dcb366; }
+.gate-hours { color:#a6bddb;font-size:.8rem; }
+.gate-hero {
+  display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:25px;align-items:center;
+  margin:clamp(24px,4.7vh,48px) 0 29px;
+}
+.gate-intro h1 { font:700 clamp(42px,5.3vw,76px)/.98 var(--display);letter-spacing:-.071em;color:#edf4ff; }
+.gate-intro p { max-width:460px;margin-top:14px;color:#bac9df;font-size:1rem;line-height:1.55; }
+.gate-network {
+  position:relative;min-height:220px;border-radius:15px;overflow:hidden;border:1px solid #273754;
+  background:radial-gradient(ellipse at center,#102e54b0,transparent 75%),radial-gradient(circle,#6b97cb47 1px,transparent 1px),#0b1424;
+  background-size:auto,16px 16px,auto;
+}
+.gate-network svg { display:block;position:absolute;inset:0;width:100%;height:100%;fill:none; }
+.gate-network .gate-trace { stroke:#8bc5ff;stroke-width:1.8;filter:drop-shadow(0 0 5px #3289ff); }
+.gate-trace-bg { stroke:#294f7f;stroke-width:.8; }
+.gate-trace-edge { stroke:#5087bc;stroke-width:.85;stroke-dasharray:5 4; }
+.gate-network circle { fill:#9bd6ff;filter:drop-shadow(0 0 6px #3891ff); }
+.gate-node {
+  position:absolute;transform:translate(-50%,-50%);padding:5px 9px;border:1px solid #6594cd;border-radius:7px;
+  background:#152944;box-shadow:0 0 14px #1189fc36;color:#e4f1ff;font:680 .78rem var(--display);white-space:nowrap;
+}
+.gate-node-a { left:14%;top:33.64%; }.gate-node-b { left:51%;top:61.82%; }.gate-node-c { left:84.9%;top:33.64%; }
+.gate-network-tag { position:absolute;left:12px;bottom:10px;color:#a3c5f5;font:700 .66rem var(--mono);letter-spacing:.10em; }
+.gate-options { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px; }
+.gate-card {
+  display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:14px;
+  padding:clamp(16px,2.4vw,24px);min-width:0;border:1px solid #2a415f;border-radius:15px;
+  background:linear-gradient(143deg,#112039,#0f141c 70%);color:#eef5ff;
+}
+.gate-replay { background:linear-gradient(138deg,#183157,#111a2b 69%);border-color:#4265a3; }
+.gate-card-top { width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px; }
+.gate-card-icon { display:grid;place-items:center;width:40px;height:40px;border-radius:10px;background:#203961;border:1px solid #42659a;color:#b3d5ff;font:750 26px var(--display); }
+.gate-tag { padding:4px 6px;border:1px solid #3b5780;border-radius:5px;background:#162642;color:#b8d3f8;font:700 .65rem var(--mono);letter-spacing:.055em;text-align:right; }
+.gate-card h2 { font:700 clamp(22px,2.8vw,31px)/1.1 var(--display);letter-spacing:-.04em; }
+.gate-card p { margin-top:6px;max-width:410px;font-size:.9rem;color:#b9c9df;line-height:1.5; }
+.gate-action {
+  margin-top:auto;display:inline-flex;align-items:center;min-height:41px;padding:8px 13px;border:1px solid #688dbb;
+  border-radius:8px;text-decoration:none;color:#e0edff;background:#1d3252;font-size:.88rem;font-weight:800;
+}
+.gate-action:hover { background:#2a4368; }
+.gate-replay .gate-action { background:#9fc7ff;border-color:#9fc7ff;color:#10264a; }
+.gate-replay .gate-action:hover { background:#c1dbff; }
+.gate-foot { margin-top:15px;color:#9aacca;font-size:.8rem; }
+@media (prefers-reduced-motion:no-preference) {
+  @keyframes gate-edge-flow { from { stroke-dashoffset:1; } to { stroke-dashoffset:0; } }
+  .gate-network .gate-trace { stroke-dasharray:1;animation:gate-edge-flow 1.05s ease-out both; }
+  .gate-card { transition:transform .18s ease,border-color .18s ease; }
+  .gate-card:hover { transform:translateY(-3px);border-color:#84ace9; }
+}
+@media(max-width:740px) {
+  .gate-hero { grid-template-columns:1fr;gap:16px;margin:24px 0 18px; }
+  .gate-intro h1 br { display:none; }
+  .gate-network { min-height:134px; }
+  .gate-network-tag { bottom:5px; }
+  .gate-node { font-size:.72rem; }
+  .session-gate { padding-top:19px; }
+}
+@media(max-width:480px) {
+  .gate-options { grid-template-columns:1fr;gap:9px; }
+  .gate-card { gap:9px; }
+  .gate-network { display:none; }
+  .gate-intro h1 { font-size:clamp(41px,10vw,52px); }
+  .gate-hours { flex:none;text-align:right; }
+  .gate-market time { border:0;padding:0; }
+  .mode-picker-link { padding-inline:6px;font-size:11px; }
+  .mode-picker-link::after { margin-left:4px; }
+}
+[data-theme="light"] body[data-mode="choose"] { background:radial-gradient(ellipse at 74% 0%,#d8e8ff,#f2f6fa 68%); }
+[data-theme="light"] :is(.gate-intro h1,.gate-market,.gate-card,.gate-card h2) { color:#173356; }
+[data-theme="light"] :is(.gate-intro p,.gate-card p,.gate-market time,.gate-hours,.gate-foot) { color:#435d7b; }
+[data-theme="light"] .gate-market { background:#f4f8ff;border-color:#b8cde7; }
+[data-theme="light"] .gate-market time { border-color:#b0c0d4; }
+[data-theme="light"] .gate-network { border-color:#a8c1e4;background:radial-gradient(circle,#759bc44d 1px,transparent 1px),#e1eeff;background-size:16px 16px,auto; }
+[data-theme="light"] .gate-network .gate-trace { stroke:#2752a1; }
+[data-theme="light"] .gate-network circle { fill:#2863b7; }
+[data-theme="light"] .gate-network-tag { color:#345e95; }
+[data-theme="light"] .gate-card { background:#ffffffd9;border-color:#b2c7e3; }
+[data-theme="light"] .gate-replay { background:#e4efff;border-color:#91add7; }
+[data-theme="light"] :is(.gate-tag,.gate-card-icon,.mode-picker-link) { background:#e2eeff;border-color:#a8bce0;color:#214779; }
+[data-theme="light"] .gate-action { background:#f0f6ff;color:#163e72;border-color:#a8bce0; }
+[data-theme="light"] .gate-replay .gate-action { background:#2255a1;color:#fff;border-color:#2255a1; }
+
+/* Exchange charts and the market session ribbon */
+body[data-website=true] .statusbar:not([hidden]) { display:flex;align-items:center;justify-content:space-between;gap:9px;flex-wrap:wrap;margin-bottom:6px; }
+.statusbar[data-state=public],.statusbar[data-state=closed] { background:#111e31;border-color:#334967;color:#cdddf5; }
+.replay-link { color:#acd0ff;font-size:.84rem;font-weight:800;text-underline-offset:.19em; }
+.desk-mode-controls { display:flex;flex-wrap:wrap;gap:6px; }
+.desk-mode-controls a { text-decoration:none; }
+.exchange-chart,.exchange-quotes-card { --exchange-height:340px;padding:3px 12px 6px; }
+#research-exchange-chart { --exchange-height:365px;padding-inline:0;margin:7px 0; }
+.exchange-quotes-card { --exchange-height:375px;margin-bottom:12px; }
+.exchange-chart .tradingview-widget-container__widget,
+.exchange-quotes-card .tradingview-widget-container__widget { height:var(--exchange-height);width:100%; }
+.exchange-chart iframe,.exchange-quotes-card iframe { width:100%;height:100%;border:0; }
+.exchange-source { color:var(--soft);padding-block:5px;text-align:left;font-size:12px;line-height:1.4; }
+.exchange-source a { color:#8dbdff; }
+.exchange-unavailable { margin:0 0 2px;color:var(--soft);font-size:13px; }
+.exchange-chart .tradingview-widget-container__widget:not(:has(iframe)),
+.exchange-quotes-card .tradingview-widget-container__widget:not(:has(iframe)) { height:0; }
+[data-theme="light"] :is(.exchange-source a,.replay-link) { color:#235b9a; }
+@media(max-width:625px) {
+  .exchange-chart,.exchange-quotes-card { --exchange-height:290px;padding-inline:6px; }
+}
+
+/* The network encodes types with blue shades and distinct line patterns. */
+.graph-shell { border-color:#263c60;background:#081224; }
+#graph {
+  background:radial-gradient(ellipse at 52% 54%,#102c5299,transparent 72%),
+    radial-gradient(circle,#577bad3b 1px,transparent 1px),#081224;
+  background-size:auto,18px 18px,auto;scrollbar-color:#385882 #0b1629;
+}
+.lane { border-color:#375a8c80; }
+.lane span { background:#142744;color:#c3dafa;border-color:#385882; }
+.node[data-group] .node-glyph { background:#132846;border-color:#4c76ad;color:#d8eaff;box-shadow:0 0 0 4px #0d1a2b,0 0 12px #4a98ff26; }
+.node[data-group="0"] .node-glyph { background:#172649;border-color:#5b75be; }
+.node[data-group="1"] .node-glyph { background:#143454;border-color:#578ac3; }
+.node[data-group="2"] .node-glyph { background:#102f5d;border-color:#4e8cdd; }
+.node[data-group="3"] .node-glyph { background:#1a2b4c;border-color:#5b82be; }
+.node[data-group]:is(:hover,.selected) .node-glyph {
+  background:#a6d5ff;border-color:#d7eeff;color:#102b4e;box-shadow:0 0 0 4px #65a9ff3d,0 0 22px #2e83ff87;
+}
+.node.shocked .node-glyph { outline-color:#8fceff;box-shadow:0 0 19px #92c9ff91; }
+.node[aria-expanded=true] .node-glyph { outline-color:#91befa; }
+.node-name { background:#101e34ed;color:#dbeaff;box-shadow:0 0 8px #040c1d; }
+.node.selected .node-name { color:#d0e9ff; }
+.funding { --edge:#9acbff; }.spend { --edge:#4c9bff; }.holding { --edge:#7190ed; }.partner { --edge:#4877b1; }
+.filters .dot { display:inline-block;width:14px;height:0;border-top:2px solid var(--edge);border-radius:0;background:transparent; }
+.filters .spend,.filters .holding { border-top-style:dashed; }
+.filters .partner { border-top-style:dotted; }
+body .scenario .path-label { color:#9dceff!important; }
+[data-theme="light"] body .graph-shell { border-color:#b0c6e5;background:#edf5ff; }
+[data-theme="light"] body #graph {
+  background:radial-gradient(ellipse at 50% 48%,#cfdef7,transparent 73%),radial-gradient(circle,#6487c145 1px,transparent 1px),#edf5ff;
+  background-size:auto,18px 18px,auto;scrollbar-color:#8aa8d3 #e4edfa;
+}
+[data-theme="light"] body .lane span { background:#edf5ff;color:#285084;border-color:#96b0d6; }
+[data-theme="light"] body .node[data-group] .node-glyph { background:#f0f6ff;color:#225087;border-color:#8faad2;box-shadow:0 0 0 4px #e4eefc; }
+[data-theme="light"] body .node[data-group]:is(:hover,.selected) .node-glyph { background:#b8d9ff;color:#143660;border-color:#5687d5;box-shadow:0 0 0 4px #aecdfa7a; }
+[data-theme="light"] body :is(.node-name,.node.selected .node-name) { color:#22446a;background:#f1f7ff;box-shadow:none; }
+[data-theme="light"] .funding { --edge:#2454aa; }[data-theme="light"] .spend { --edge:#0573ae; }
+[data-theme="light"] .holding { --edge:#3956b9; }[data-theme="light"] .partner { --edge:#365e88; }
+[data-theme="light"] body .scenario .path-label { color:#2454aa!important; }
+.chart-legend { flex-wrap:wrap;gap:4px 8px; }
+.chart-legend .chart-peer { color:#8dc6ff; }
+[data-theme="light"] .chart-legend .chart-peer { color:#2468a2; }
+
 </style>
 
 </head>
-<body data-initial-view="overview" data-simulation-only="true">
+<body data-market-backend="static" data-initial-view="overview" data-mode="choose">
 <header class="topbar">
   <a href="#overview" class="brand" data-home-link><span class="brand-icon" aria-hidden="true">✳</span><span>aster<span class="brand-second"> terminal</span></span></a>
-  <nav aria-label="Workspace" class="workspace-nav">
+  <nav aria-label="Workspace" class="workspace-nav" id="workspace-controls" hidden>
     <button type="button" class="nav" data-nav="overview">Overview</button>
     <button type="button" class="nav" data-nav="markets">Markets</button>
     <button type="button" class="nav" data-nav="watchlist">Watchlist</button>
@@ -825,9 +1001,46 @@ body[data-website="true"] .offline-mode { background:#d4c3f7; color:#282035; }
     <button type="button" class="nav" data-nav="network">Network</button>
     <button type="button" class="nav" data-nav="trading">Trading</button>
   </nav>
-  <div class="topbar-settings"><button class="theme-toggle" type="button" id="theme-toggle" aria-pressed="false" aria-label="Light mode">☀ Light</button><div class="mode-switch" aria-label="Market mode"><span id="live-mode" hidden></span><span id="sample-mode" class="offline-mode">Simulation</span></div></div>
+  <div class="topbar-settings"><button class="theme-toggle" type="button" id="theme-toggle" aria-pressed="false" aria-label="Light mode">☀ Light</button><a href="?" class="mode-picker-link" id="mode-current" aria-label="Change market mode" title="Change market mode">Choose mode</a></div>
 </header>
-<main id="main" tabindex="-1">
+<main id="session-gate" class="session-gate" aria-labelledby="gate-title">
+  <div class="gate-top">
+    <div class="gate-market" id="gate-session"><span class="session-dot" aria-hidden="true"></span><strong id="gate-session-label">U.S. equities</strong><time id="gate-market-clock"></time></div>
+    <a class="gate-hours" href="https://www.nyse.com/trade/hours-calendars" target="_blank" rel="noopener noreferrer">U.S. market hours</a>
+  </div>
+  <div class="gate-hero">
+    <div class="gate-intro">
+      <h1 id="gate-title">Choose how to<br>open Aster.</h1>
+      <p>Follow relationships between real companies, then see how those connections can affect a portfolio.</p>
+    </div>
+    <div class="gate-network" aria-label="OpenAI buys cloud capacity from CoreWeave, which buys hardware from NVIDIA" role="img">
+      <svg viewBox="0 0 510 220" aria-hidden="true" preserveAspectRatio="none">
+        <path d="M20 113 C95 113 106 60 185 60 S298 158 360 158 S441 112 507 112" class="gate-trace-bg"/>
+        <path d="M20 113 C115 113 113 145 222 145 S311 66 391 66 S454 121 507 121" class="gate-trace-bg"/>
+        <path d="M71 74 C154 74 177 136 260 136 S342 74 433 74" class="gate-trace" pathLength="1"/>
+        <path d="M71 74 C181 74 230 33 302 33 S390 74 433 74" class="gate-trace-edge"/>
+        <path d="M260 136 C292 137 356 196 407 196" class="gate-trace-edge"/>
+        <circle cx="71" cy="74" r="5"/><circle cx="260" cy="136" r="5"/><circle cx="433" cy="74" r="5"/>
+      </svg>
+      <span class="gate-node gate-node-a">OpenAI</span><span class="gate-node gate-node-b">CoreWeave</span><span class="gate-node gate-node-c">NVIDIA</span>
+      <span class="gate-network-tag">COMPANY NETWORK</span>
+    </div>
+  </div>
+  <div class="gate-options" aria-label="Market modes">
+    <article class="gate-card gate-live">
+      <div class="gate-card-top"><span class="gate-card-icon" aria-hidden="true">⌁</span><span class="gate-tag">U.S. MARKETS</span></div>
+      <div><h2>Live Market</h2><p>View actual prices and exchange charts alongside company disclosures. Prices may be delayed depending on the feed.</p></div>
+      <a class="gate-action" href="?mode=live">Open Live Market</a>
+    </article>
+    <article class="gate-card gate-replay">
+      <div class="gate-card-top"><span class="gate-card-icon" aria-hidden="true">▷</span><span class="gate-tag" id="gate-replay-badge">AFTER-HOURS DEMO</span></div>
+      <div><h2>Market Replay</h2><p>Run an illustrative U.S. session with real companies. Step through prices, place paper trades, and trace an AI spending shock.</p></div>
+      <a class="gate-action" href="?mode=replay">Start Market Replay</a>
+    </article>
+  </div>
+  <p class="gate-foot">Paper trading only. Orders use virtual funds.</p>
+</main>
+<main id="main" tabindex="-1" hidden>
   <div class="ticker-strip" id="ticker-strip" aria-label="Market watch"></div>
   <div id="account-metrics" class="account-metrics" aria-label="Paper account summary"></div>
   <div class="statusbar" id="market-status" role="status">Connecting to market data…</div>
@@ -844,6 +1057,7 @@ body[data-website="true"] .offline-mode { background:#d4c3f7; color:#282035; }
         </header>
         <div class="invest-chart-box"><canvas id="invest-market-chart" aria-label="Market performance chart" role="img"></canvas><p id="invest-chart-empty" hidden></p></div>
         <div id="invest-chart-range" class="invest-chart-range"></div>
+        <div id="overview-exchange-chart" class="exchange-chart" hidden></div>
       </article>
       <article class="invest-card invest-goal-preview" aria-labelledby="invest-plan-title">
         <header class="invest-card-head"><div><p class="invest-kicker">YOUR PLAN</p><h2 id="invest-plan-title">Saving goals</h2></div><button type="button" class="invest-text-button" data-nav="goals">View goals</button></header>
@@ -862,6 +1076,7 @@ body[data-website="true"] .offline-mode { background:#d4c3f7; color:#282035; }
   </section>
   <section id="invest-markets" class="invest-page" aria-labelledby="invest-markets-title" hidden>
     <header class="invest-page-head"><div><p class="invest-kicker">EXPLORE</p><h1 id="invest-markets-title">Markets</h1><p>Search stocks and funds, compare day moves, and open company research.</p></div></header>
+    <section id="market-exchange-quotes" class="invest-card exchange-quotes-card" aria-label="Market quotes" hidden></section>
     <div class="invest-card invest-table-card">
       <div class="invest-toolbar">
         <label class="invest-search-control"><span class="sr-only">Search markets</span><input id="invest-market-search" type="search" placeholder="Search company or ticker" autocomplete="off"></label>
@@ -931,7 +1146,7 @@ body[data-website="true"] .offline-mode { background:#d4c3f7; color:#282035; }
         <h1 id="trade-desk-title">Trading workspace</h1>
         <p class="lede">Manage positions, prepare baskets, and review your fills.</p>
       </div>
-      <button id="practice-basket" class="btn secondary" type="button">Load sample basket</button>
+      <div class="desk-mode-controls"><a id="desk-replay-cta" class="btn secondary" href="?mode=replay#trading" hidden>Practice in Replay</a><button id="practice-basket" class="btn secondary" type="button">Load sample basket</button></div>
     </header>
     <div class="desk-layout">
       <section class="desk-watch panel" aria-labelledby="desk-instruments-title">
@@ -969,6 +1184,7 @@ body[data-website="true"] .offline-mode { background:#d4c3f7; color:#282035; }
             <div id="desk-chart-markers"></div>
             <p id="desk-chart-message"></p>
           </div>
+          <div id="desk-exchange-chart" class="exchange-chart" hidden></div>
           <div id="desk-chart-time" class="desk-chart-time"></div>
           <div id="desk-chart-links" class="desk-chart-links"></div>
         </section>
@@ -1028,14 +1244,14 @@ body[data-website="true"] .offline-mode { background:#d4c3f7; color:#282035; }
   <section class="panel scenario" id="portfolio" aria-labelledby="scenario-title">
     <div class="scenario-head">
       <div class="scenario-icon" aria-hidden="true">↯</div>
-      <div><p class="eyebrow">PORTFOLIO STRESS TEST</p><h2 id="scenario-title">What if Nova cuts cloud spending?</h2><p>You hold zero Nova shares. Trace the shock through a preset ₹10,000 demo portfolio.</p></div>
+      <div><p class="eyebrow">PORTFOLIO STRESS TEST</p><h2 id="scenario-title">What if Nova cuts cloud spending?</h2><p id="scenario-copy">You hold zero Nova shares. Trace the shock through a preset ₹10,000 demo portfolio.</p></div>
       <button id="run-shock" class="btn primary">Run shock</button>
     </div>
     <div id="shock-result" hidden></div>
     <details class="shock-limit" id="shock-limit">
-      <summary>Explore a ₹500 loss limit</summary>
-      <p>This separate demo starts with ₹5,000 in Atlas, ₹3,000 in GridCloud, and ₹2,000 in virtual cash.</p>
-      <label for="shock-transfer">Move Atlas exposure to virtual cash</label>
+      <summary id="shock-limit-label">Explore a ₹500 loss limit</summary>
+      <p id="shock-limit-copy">This separate demo starts with ₹5,000 in Atlas, ₹3,000 in GridCloud, and ₹2,000 in virtual cash.</p>
+      <label id="shock-transfer-label" for="shock-transfer">Move Atlas exposure to virtual cash</label>
       <select id="shock-transfer" class="desk-field"><option value="0">₹0</option><option value="1000">₹1,000</option><option value="2000">₹2,000</option><option value="5000">₹5,000</option></select>
       <output id="shock-limit-result" for="shock-transfer" aria-live="polite"></output>
     </details>
@@ -1276,7 +1492,7 @@ const liveGroups = [
     ['GOOGL','Alphabet','Google Cloud','Listed','Operates Google Cloud and Gemini. Google LLC entered a disclosed investment agreement with Anthropic.','GOOGL']
   ]],
   ['AI labs', [
-    ['OPENAI','OpenAI','Foundation models','Research','Develops foundation models and has disclosed relationships with multiple infrastructure providers.'],
+    ['OPENAI','OpenAI','Foundation models','Private','Develops foundation models and has disclosed relationships with multiple infrastructure providers.'],
     ['ANT','Anthropic','Foundation models','Listed','Develops Claude models. Its IPO announcement identified ANT as the Nasdaq ticker.','ANT'],
     ['META','Meta Platforms','AI research','Listed','Develops AI models and operates the Meta AI product family.','META']
   ]]
@@ -1336,7 +1552,8 @@ const liveResearch = [
   ['Disclosed NVIDIA supplier relationship','CoreWeave proxy statement, 2025 supplier purchases.',liveSources.nvidiaSupply],
   ['ETF disclosures','State Street issuer fact sheet, March 2026 snapshot. Holdings can change.',liveSources.spy],
   ['AI financing and spillovers','IMF Global Financial Stability Report, October 2026.','https://www.imf.org/-/media/files/publications/gfsr/2026/october/english/ch1.pdf'],
-  ['Market data methods','Alpaca latest quotes and feed definitions.','https://docs.alpaca.markets/us/reference/stocklatestquotes-1']
+  ['Market data methods','Alpaca feed coverage and real-time entitlements.','https://docs.alpaca.markets/us/docs/about-market-data-api'],
+  ['Public exchange charts','TradingView lists the delay and data provider by exchange.','https://www.tradingview.com/widget-docs/markets/north-america/']
 ];
 
 function liveDataset() {
@@ -1358,6 +1575,223 @@ const liveProfileNotes = {
   ANT: 'The map separates Anthropic’s external capital and the cloud capacity it buys. Longer price windows depend on the available trading history.',
   META: 'The SPY link represents a disclosed holding in the fund. This selected map covers the documented links shown in the profile.'
 };
+
+</script>
+<script>
+'use strict';
+
+// Illustrative seeds for a reproducible showcase. None are exchange observations.
+const replaySeeds = {
+  SPY:[670,.36], MSFT:[508,.81], AMZN:[233,-.63], NVDA:[191,2.40],
+  AMD:[226,1.28], AVGO:[351,.75], CRWV:[93,-1.20], ORCL:[202,-.40],
+  GOOGL:[287,1.05], META:[603,.44], ANT:[101,1.67], AIAI:[100,1.10]
+};
+const replayOpen = Date.parse('2026-11-20T09:30:00-05:00');
+const replayStart = replayOpen + 60*60_000;
+const replayStep = 2*60_000;
+const lastReplayTick = 165;
+const replayStoryId = 'replay-cloud-review';
+
+const replayNews = [
+  {
+    id:replayStoryId, title:'Scenario: OpenAI reviews its planned cloud capacity', time:'2026-11-20T10:12:00-05:00',
+    source:'Showcase scenario',topic:'Cloud demand',scenario:true,
+    body:'Assume a slowdown in demand for AI infrastructure. Affected capacity orders and supplier spending could fall. The relationship map uses disclosed contracts and purchases. This event and its modeled price moves are illustrative.',
+    impacts:{
+      OPENAI:['flat','The scenario assumes a review of planned spending. OpenAI has no exchange quote.'],
+      CRWV:['down','The stress test assumes a CoreWeave decline of 8%.'],
+      NVDA:['down','The stress test assumes a NVIDIA decline of 5%.'],
+      AIAI:['down','The demo basket has overlapping NVIDIA and CoreWeave exposure.']
+    }
+  },
+  {
+    id:'replay-benchmark-check',title:'Scenario: Broad market holds steady at the open',time:'2026-11-20T09:42:00-05:00',
+    source:'Showcase scenario',topic:'Benchmark',scenario:true,
+    body:'The hypothetical benchmark session keeps broad-market moves small while individual AI stocks react more strongly.',
+    impacts:{
+      SPY:['flat','This is the simulated benchmark tape for the showcase.'],
+      NVDA:['flat','Benchmark resilience does not remove company-specific exposure.']
+    }
+  }
+];
+
+function replayDataset() {
+  const live = liveDataset();
+  const group = 0;
+  const basket = ['AIAI','Aster AI Basket','Demo allocation','Demo basket','An illustrative basket used to demonstrate overlap. The stress-test weights are 40% NVIDIA, 30% CoreWeave, and 30% other assets. It is not a listed fund.'];
+  const groups = live.groups.map(([name,rows],index)=>[name,index===group?[...rows,basket]:rows]);
+  const companies = new Map(live.companies);
+  const [id,name,sector,listing,summary] = basket;
+  companies.set(id,{id,name,sector,listing,summary,group,index:groups[group][1].length-1});
+  for(const [symbol,[price,change]] of Object.entries(replaySeeds)) {
+    companies.set(symbol,{...companies.get(symbol),price,change});
+  }
+  const links = [
+    ...live.links,
+    ...[['NVDA','40% demo weight'],['CRWV','30% demo weight']].map(([to,value],index)=>({
+      id:live.links.length+index,from:id,to,type:'holding',label:'Showcase basket allocation',value,date:'Showcase assumption'
+    }))
+  ];
+  return {groups,companies,links,articles:[...replayNews,...live.articles],research:live.research};
+}
+
+const exampleStress = {
+  trigger:'NOVA',chip:'ATLS',cloud:'GRID',fund:'INNO',
+  story:'nova-reduction',title:'What if Nova cuts cloud spending?',
+  path:'Nova cuts cloud orders → GridCloud spends less on chips → Atlas sales are exposed',
+  chipName:'Atlas',cloudName:'GridCloud',fundName:'Innovation ETF'
+};
+const replayStress = {
+  trigger:'OPENAI',chip:'NVDA',cloud:'CRWV',fund:'AIAI',
+  story:replayStoryId,title:'What if OpenAI slows cloud spending?',
+  path:'OpenAI cuts planned cloud demand → CoreWeave trims spending → NVIDIA sales are exposed',
+  chipName:'NVIDIA',cloudName:'CoreWeave',fundName:'Aster AI Basket'
+};
+
+</script>
+<script>
+'use strict';
+
+const modeParams = new URLSearchParams(location.search);
+const requestedMode = modeParams.get('mode');
+const activeMode = ['live','replay','sample'].includes(requestedMode) ? requestedMode : document.body.dataset.initialMode || '';
+const sampleMode = activeMode !== 'live';
+const replayMode = activeMode === 'replay';
+const legacyMode = !replayMode && sampleMode;
+const marketBackend = document.body.dataset.marketBackend !== 'static' && location.protocol !== 'file:';
+
+const easternClock = new Intl.DateTimeFormat('en-US',{
+  timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit',weekday:'short',
+  hour:'numeric',minute:'2-digit',hourCycle:'h23'
+});
+const nyseCalendar = new Map([
+  ['2026-01-01',0],['2026-01-19',0],['2026-02-16',0],['2026-04-03',0],['2026-05-25',0],
+  ['2026-06-19',0],['2026-07-03',0],['2026-09-07',0],['2026-11-26',0],['2026-11-27',780],
+  ['2026-12-24',780],['2026-12-25',0],
+  ['2027-01-01',0],['2027-01-18',0],['2027-02-15',0],['2027-03-26',0],['2027-05-31',0],
+  ['2027-06-18',0],['2027-07-05',0],['2027-09-06',0],['2027-11-25',0],['2027-11-26',780],['2027-12-24',0]
+]);
+
+function regularSession(at=Date.now()) {
+  const {year,month,day,weekday,hour,minute}=Object.fromEntries(easternClock.formatToParts(at).map(({type,value})=>[type,value]));
+  const date=year+'-'+month+'-'+day;
+  const minuteOfDay=Number(hour)*60+Number(minute);
+  const close=nyseCalendar.get(date) ?? (weekday==='Sat'||weekday==='Sun'?0:960);
+  const open=close>0 && minuteOfDay>=570 && minuteOfDay<close;
+  const state=open?'U.S. regular session open':close>0 && minuteOfDay<570?'Before the U.S. open':'U.S. regular session closed';
+  const time=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hour:'numeric',minute:'2-digit',timeZoneName:'short'}).format(at);
+  return {open,state,time,close};
+}
+
+function modeLink(mode, {page='', symbol=''}={}) {
+  const params=new URLSearchParams({mode});
+  if(symbol)params.set('symbol',symbol);
+  return '?'+params.toString()+(page?'#'+page:'');
+}
+
+function setupModeScreen() {
+  document.body.dataset.mode=activeMode||'choose';
+  $('main').hidden=!activeMode;
+  $('session-gate').hidden=Boolean(activeMode);
+  $('workspace-controls').hidden=!activeMode;
+  const title=$('mode-current');
+  title.textContent=replayMode?'Market Replay':legacyMode?'Classic Simulation':'Live Market';
+  if(activeMode)return;
+  const update=()=>{
+    const session=regularSession();
+    $('gate-session-label').textContent=session.state;
+    $('gate-market-clock').textContent=session.time;
+    $('gate-session').dataset.state=session.open?'open':'closed';
+    $('gate-replay-badge').textContent=session.open?'PAPER PRACTICE':'AFTER-HOURS DEMO';
+  };
+  update();
+  setInterval(update,30_000);
+}
+
+</script>
+<script>
+'use strict';
+
+const exchangeSymbols = {
+  SPY:'AMEX:SPY', NVDA:'NASDAQ:NVDA', CRWV:'NASDAQ:CRWV', MSFT:'NASDAQ:MSFT',
+  AMZN:'NASDAQ:AMZN', AMD:'NASDAQ:AMD', AVGO:'NASDAQ:AVGO', ORCL:'NYSE:ORCL',
+  GOOGL:'NASDAQ:GOOGL', META:'NASDAQ:META', ANT:'NASDAQ:ANT'
+};
+const widgetOrigin = 'https://s3.tradingview.com/external-embedding/';
+const publicExchange = () => !sampleMode && !market.status?.configured;
+
+function tradingViewUrl(symbol) {
+  const exchange = exchangeSymbols[symbol];
+  return exchange ? 'https://www.tradingview.com/symbols/'+exchange.replace(':','-')+'/' : 'https://www.tradingview.com/';
+}
+
+function replayAnchorLink(symbol) {
+  return '<a class="replay-link" href="'+safeText(modeLink('replay',{page:'trading',symbol}))+'">Practice in Replay</a>';
+}
+
+function mountExchangeWidget(host,{widget,theme,options,source,key,label}) {
+  if(host.dataset.widgetKey===key)return;
+  host.dataset.widgetKey=key;
+  const wrapper=document.createElement('div');
+  wrapper.className='tradingview-widget-container';
+  const target=document.createElement('div');
+  target.className='tradingview-widget-container__widget';
+  const foot=document.createElement('div');
+  foot.className='tradingview-widget-copyright exchange-source';
+  const link=document.createElement('a');
+  link.href=source;
+  link.target='_blank';
+  link.rel='noopener noreferrer';
+  link.textContent=label+' on TradingView';
+  foot.append(link,' · Delayed U.S. exchange data');
+  const script=document.createElement('script');
+  script.async=true;
+  script.src=widgetOrigin+'embed-widget-'+widget+'.js';
+  script.textContent=JSON.stringify({...options,colorTheme:theme,locale:'en'});
+  const notice=document.createElement('p');
+  notice.className='exchange-unavailable';
+  notice.textContent='Loading TradingView market data…';
+  script.addEventListener('error',()=>{notice.textContent='Chart unavailable here. Open the TradingView link below.';});
+  const watcher=new MutationObserver(()=>{
+    if(target.querySelector('iframe')){
+      notice.hidden=true;
+      watcher.disconnect();
+    }
+  });
+  watcher.observe(target,{childList:true,subtree:true});
+  setTimeout(()=>{
+    watcher.disconnect();
+    if(!target.querySelector('iframe'))notice.textContent='Market data is taking longer than expected. Open the TradingView link below.';
+  },10_000);
+  wrapper.append(target,notice,foot,script);
+  host.replaceChildren(wrapper);
+}
+
+function mountExchangeChart(host,symbol,period) {
+  const exchange=exchangeSymbols[symbol];
+  if(!exchange)return;
+  const theme=isLightTheme()?'light':'dark';
+  const {interval,range}={ '1H':{interval:'5',range:'1D'},'1D':{interval:'15',range:'1D'},
+    '1M':{interval:'D',range:'1M'},'1Y':{interval:'D',range:'12M'} }[period];
+  mountExchangeWidget(host,{
+    widget:'advanced-chart',theme,source:tradingViewUrl(symbol),key:[symbol,period,theme].join('/'),
+    label:symbol+' chart',options:{symbol:exchange,interval,range,autosize:true,timezone:'America/New_York',
+      style:'1',theme,withdateranges:true,allow_symbol_change:false,hide_side_toolbar:true,support_host:'https://www.tradingview.com'}
+  });
+}
+
+function mountQuotesBoard() {
+  const host=$('market-exchange-quotes');
+  host.hidden=!publicExchange() || invest.page!=='markets';
+  if(host.hidden)return;
+  const theme=isLightTheme()?'light':'dark';
+  mountExchangeWidget(host,{
+    widget:'market-quotes',theme,key:'quotes/'+theme,source:'https://www.tradingview.com/markets/stocks-usa/',label:'Market quotes',
+    options:{width:'100%',height:'100%',symbolsGroups:[
+      {name:'AI Leaders',symbols:['NVDA','CRWV','ANT','AVGO','AMD','MSFT','AMZN','GOOGL','META','ORCL','SPY'].map(id=>({name:exchangeSymbols[id],displayName:companies.get(id).name}))}
+    ],showSymbolLogo:true,isTransparent:false}
+  });
+}
 
 </script>
 <script>
@@ -1490,16 +1924,16 @@ const market = {
   newsJobs:new Map(), historyJobs:new Map(), ticks:0, replay:null, stream:null, liveTransport:'snapshot'
 };
 const safeText = value => String(value ?? '').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[ch]);
-const stateKey = name => 'aster:' + (sampleMode?'sample':'live') + ':' + name + ':v1';
-const currency = () => sampleMode?'INR':'USD';
-const money = amount => new Intl.NumberFormat(sampleMode?'en-IN':'en-US',{currency:currency(),style:'currency',minimumFractionDigits:2,maximumFractionDigits:2}).format(amount);
+const stateKey = name => 'aster:' + activeMode + ':' + name + ':v1';
+const currency = () => legacyMode?'INR':'USD';
+const money = amount => new Intl.NumberFormat(legacyMode?'en-IN':'en-US',{currency:currency(),style:'currency',minimumFractionDigits:2,maximumFractionDigits:2}).format(amount);
 const tone = value => value > 0 ? (value>=3?'up intense':'up') : value < 0 ? (value<=-3?'down intense':'down') : 'flat';
 const timeLabel = value => {
   const date = new Date(value);
   return Number.isFinite(date.getTime()) ? date.toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short'}) : String(value);
 };
-const feedLabel = value => ({iex:'Real-time IEX · single venue',sip:'Real-time SIP · US consolidated',delayed_sip:'Delayed SIP · view only',sample:'Sample replay'})[value] ?? 'Market feed';
-const virtualAccount = () => sampleMode?'Sample wallet':'Live-mode paper wallet';
+const feedLabel = value => ({iex:'Real-time IEX · single venue',sip:'Real-time SIP · US consolidated',delayed_sip:'Delayed SIP · view only',sample:'Sample replay',replay:'Simulated session'})[value] ?? 'Market feed';
+const virtualAccount = () => replayMode?'Replay wallet':legacyMode?'Sample wallet':'Live-mode paper wallet';
 
 async function requestMarket(op,symbol) {
   const p=new URLSearchParams({op});
@@ -1510,21 +1944,34 @@ async function requestMarket(op,symbol) {
   return data;
 }
 
+const tapeTime = (tick=market.ticks) => replayStart+tick*replayStep;
+
+function replayPrice(c,tick) {
+  const progress=Math.max(-1,tick/30);
+  const phase=c.index*.94+c.group*.72;
+  const wave=(Math.sin(tick*.18+phase)-Math.sin(phase))*.0035;
+  const drift=progress<0 ? (c.change/100)*progress*.72 : .004*Math.tanh(progress/3)*Math.sin(phase+.5);
+  const shock=state.shock && tick>=market.shockTick ? shockMoves[c.id] ?? 0 : 0;
+  return c.price*(1+wave+drift)*(1+shock/100);
+}
+
 function mark(c) {
+  if(!c)return null;
   if(sampleMode) {
     if(c.price===undefined)return null;
-    const replay=c.price * Math.sin(market.ticks*.39+c.index+c.group) * .004 * (market.ticks ? 1 : 0);
-    const factor=state.shock ? ({ATLS:.95,GRID:.92,INNO:.956}[c.id] ?? 1) : 1;
-    const mid=(c.price+replay)*factor;
+    const wiggle=c.price * Math.sin(market.ticks*.39+c.index+c.group) * .004 * (market.ticks ? 1 : 0);
+    const shock=state.shock ? shockMoves[c.id] ?? 0 : 0;
+    const mid=replayMode?replayPrice(c,market.ticks):(c.price+wiggle)*(1+shock/100);
     const spread=Math.max(.01,mid*.0008);
-    return {bid:Math.max(.01,paper.cents(mid-spread)/100),ask:paper.cents(mid+spread)/100,mid,recent:true,tradable:true,at:new Date().toISOString(),feed:'sample'};
+    return {bid:Math.max(.01,paper.cents(mid-spread)/100),ask:paper.cents(mid+spread)/100,mid,recent:true,tradable:true,
+      at:new Date(replayMode?tapeTime():Date.now()).toISOString(),feed:replayMode?'replay':'sample'};
   }
   const quote = c.symbol && market.quotes[c.symbol];
   if(!quote || !(quote.bid>0) || !(quote.ask>=quote.bid))return null;
   const elapsed=performance.now()-market.received;
   const age=Date.parse(market.observedAt)-Date.parse(quote.at)+elapsed;
   const recent=quote.recent && age <= (market.status?.quoteAgeLimitMs ?? 45_000) && !market.quoteError;
-  return {...quote,mid:(quote.ask+quote.bid)/2,recent,tradable:quote.tradable && recent,feed:market.status.feed};
+  return {...quote,mid:(quote.ask+quote.bid)/2,recent,tradable:quote.tradable && recent && regularSession().open,feed:market.status.feed};
 }
 
 function sampleDayMove(company,quote=mark(company)) {
@@ -1537,22 +1984,44 @@ function renderStatus() {
   const el=$('market-status');
   if(sampleMode) {
     el.dataset.state='sample';
-    el.innerHTML='<span><strong>Sample session</strong> · Offline prices · Virtual funds</span><span class="replay-actions"><button data-replay="toggle">'+(market.replay?'Pause replay':'Play replay')+'</button><button data-replay="step">Step</button><span>Tick '+market.ticks+'</span></span>';
+    if(!$('replay-toggle')) {
+      el.innerHTML='<span><strong>'+(replayMode?'Market Replay':'Sample session')+'</strong> · '+
+        (replayMode?'Illustrative quotes · Virtual USD':'Offline prices · Virtual funds')+'</span>'+
+        '<span class="replay-actions"><button type="button" id="replay-toggle" data-replay="toggle">Play replay</button>'+
+        '<button type="button" id="replay-step" data-replay="step">Step</button>'+
+        (replayMode?'<button type="button" data-replay="restart">Restart</button>':'')+
+        '<span id="replay-clock"></span></span>';
+    }
+    $('replay-toggle').textContent=market.replay?'Pause replay':'Play replay';
+    const ended=replayMode && market.ticks>=lastReplayTick;
+    $('replay-toggle').disabled=ended;
+    $('replay-step').disabled=ended;
+    $('replay-clock').textContent=replayMode?regularSession(tapeTime()).time+(ended?' · Replay closed':''):'Tick '+market.ticks;
     return;
   }
-  if(!market.status?.configured || market.quoteError) {
+  const session=regularSession();
+  if(publicExchange()) {
+    el.dataset.state='public';
+    el.innerHTML='<span><strong>'+session.state+'</strong> · '+session.time+' · TradingView delayed quotes · Read-only</span>'+
+      '<a class="replay-link" href="'+modeLink('replay',{page:'trading',symbol:state.selected})+'">Practice in Replay</a>';
+    return;
+  }
+  if(market.quoteError) {
     el.dataset.state='unavailable';
-    el.textContent=market.quoteError || 'Live feed setup required. Add Alpaca credentials to enable quotes, charts and current news. Simulation works offline.';
+    el.textContent=market.quoteError;
     return;
   }
   const quotes=Object.values(market.quotes);
-  const anyRecent=quotes.some(q=>q.recent) && performance.now()-market.received<25_000;
-  el.dataset.state=anyRecent && market.status.feed!=='delayed_sip'?'live':'';
-  el.textContent=feedLabel(market.status.feed) + ' · ' + (quotes.length?'Quotes checked at '+timeLabel(market.observedAt):'No quotes returned') + ' · '+(market.liveTransport==='stream'?'Streaming quotes':'Snapshots every 10 seconds')+' · Virtual funds only';
+  const anyRecent=quotes.some(q=>q.recent && Date.now()-Date.parse(q.at)<=market.status.quoteAgeLimitMs);
+  const realtime=anyRecent && session.open && market.status.feed!=='delayed_sip';
+  const latest=quotes.reduce((latest,q)=>Math.max(latest,Date.parse(q.at)||0),0);
+  el.dataset.state=realtime?'live':'closed';
+  el.textContent=session.state+' · '+feedLabel(market.status.feed)+(latest?' · Last quote '+timeLabel(latest):' · Waiting for quotes')+
+    (realtime?(market.liveTransport==='stream'?' · Streaming':' · Refreshing every 10 seconds'):'')+' · Paper trading only';
 }
 
 function readWatch() {
-  const defaults=sampleMode?['ATLS','GRID','INNO','LUMN']:['NVDA','CRWV','SPY','MSFT','ANT'];
+  const defaults=legacyMode?['ATLS','GRID','INNO','LUMN']:['NVDA','CRWV','SPY','MSFT','ANT'];
   try {
     const list=JSON.parse(localStorage.getItem(stateKey('watch')));
     return Array.isArray(list)?list.filter(id=>companies.has(id)):defaults;
@@ -1563,7 +2032,7 @@ function updateTicker() {
   const list=readWatch();
   $('ticker-strip').innerHTML='<span class="ticker-title">WATCHLIST</span>'+(list.length?list.map(id=>{
     const c=companies.get(id),quote=mark(c);
-    const movement=sampleDayMove(c,quote);
+    const movement=investMove(c,quote);
     const change=movement===null?'':'<span class="'+tone(movement)+'">'+signed(movement)+'</span>';
     return '<button class="quote-tile" aria-pressed="'+(state.selected===id)+'" data-company="'+id+'" aria-label="Open '+c.name+'"><strong>'+id+'</strong><small>'+(quote?money(quote.mid):'—')+'</small>'+change+'</button>';
   }).join(''):'<span class="empty">Use a company’s detail card to add it.</span>');
@@ -1592,6 +2061,7 @@ function reprice() {
   updateEntityQuote();
   renderWallet();
   refreshDesk();
+  mountQuotesBoard();
   evaluateAlerts();
   if(state.tab==='trade')updateTicket();
 }
@@ -1617,7 +2087,11 @@ function acceptQuotes(result) {
   if (!market.status || result.feed!==market.status.feed || !Number.isFinite(Date.parse(result.observedAt)) || !result.quotes) return;
   for (const [symbol,quote] of Object.entries(result.quotes)) {
     const prior=market.quotes[symbol];
-    if(!prior || Date.parse(quote.at)>=Date.parse(prior.at)) market.quotes[symbol]=quote;
+    if(!prior || Date.parse(quote.at)>=Date.parse(prior.at)) {
+      market.quotes[symbol]={...quote,previousClose:quote.previousClose ?? prior?.previousClose};
+    } else if (quote.previousClose!=null) {
+      market.quotes[symbol]={...prior,previousClose:quote.previousClose};
+    }
   }
   if (!market.observedAt || Date.parse(result.observedAt)>=Date.parse(market.observedAt)) {
     market.observedAt=result.observedAt;
@@ -1652,11 +2126,24 @@ function connectQuoteStream() {
   },{once:true});
 }
 
-function nextSampleTick() {
-  market.ticks++;
+function updateReplayViews() {
   reprice();
   if(state.tab==='performance')renderPerformance(companies.get(state.selected));
   if(!$('trade-desk').hidden)loadDeskChart();
+  if($('research-dialog').open && researchPanel.tab==='chart') {
+    updateReplayResearchChart();
+  }
+}
+
+function pauseReplay() {
+  if(market.replay)clearInterval(market.replay);
+  market.replay=null;
+}
+
+function nextSampleTick() {
+  market.ticks++;
+  if(replayMode && market.ticks>=lastReplayTick)pauseReplay();
+  updateReplayViews();
 }
 
 async function startMarket() {
@@ -1664,41 +2151,46 @@ async function startMarket() {
     renderStatus();
     document.addEventListener('click',event=>{
       const replay=event.target.closest('[data-replay]')?.dataset.replay;
-      if(replay==='step')nextSampleTick();
+      if(replay==='step' && (!replayMode || market.ticks<lastReplayTick))nextSampleTick();
       if(replay==='toggle') {
-        if(market.replay){clearInterval(market.replay);market.replay=null;}
+        if(market.replay)pauseReplay();
         else market.replay=setInterval(nextSampleTick,1750);
         renderStatus();
+      }
+      if(replay==='restart') {
+        pauseReplay();
+        market.ticks=0;
+        if(state.shock)toggleShock(false);
+        updateReplayViews();
       }
     });
     return;
   }
+  renderStatus();
+  setInterval(()=>{if(!document.hidden)renderStatus();},30_000);
+  if(!marketBackend)return;
   try {
     market.status=await requestMarket('status');
-    renderStatus();
-    updateEntityQuote();
-    if(market.status.configured) {
-      connectQuoteStream();
-      await refreshQuotes();
-      selectMarketEntity();
-      if(!$('trade-desk').hidden)loadDeskChart();
-      setInterval(()=>{if(!document.hidden)refreshQuotes();},10_000);
-      setInterval(()=>{
-        if(document.hidden)return;
-        if($('trade-desk').hidden)loadNews(companies.get(state.selected));
-        else loadDeskChart();
-      },60_000);
-    }
-  } catch(error) {
-    market.quoteError=error.message;
-    renderStatus();
+    if(!market.status.configured)return;
+    connectQuoteStream();
+    await refreshQuotes();
+    selectMarketEntity();
+    if(!$('trade-desk').hidden)loadDeskChart();
+    setInterval(()=>{if(!document.hidden)refreshQuotes();},10_000);
+    setInterval(()=>{
+      if(document.hidden)return;
+      if($('trade-desk').hidden)loadNews(companies.get(state.selected));
+      else loadDeskChart();
+    },60_000);
+  } catch {
+    // The delayed embedded charts remain available if the optional backend is unreachable.
   }
 }
 
 function companyNews(id) {
   const seeded=articles.filter(article=>article.impacts[id]);
-  if(sampleMode)return seeded;
-  const wire=market.news[id]?.articles ?? [];
+  if(legacyMode)return seeded;
+  const wire=sampleMode?[]:market.news[id]?.articles ?? [];
   return [...wire,...seeded].sort((a,b)=>Date.parse(b.time)-Date.parse(a.time));
 }
 
@@ -1733,7 +2225,7 @@ async function loadNews(c) {
 
 function headline(article,id) {
   const impact=article.impacts[id][0];
-  const stamp=sampleMode?article.time:timeLabel(article.time);
+  const stamp=legacyMode?article.time:timeLabel(article.time);
   return '<button class="news-row ' + impact + '" data-article="' + safeText(article.id) + '">' + safeText(article.title) + '<span class="news-meta">' + impactLabels[impact] + ' · ' + safeText(article.source?article.source+' · '+stamp:stamp) + '</span></button>';
 }
 
@@ -1741,10 +2233,10 @@ function showArticle(id, context=state.selected) {
   const article=companyNews(context).find(a=>a.id===id) ?? articles.find(a=>a.id===id);
   if(!article)return;
   const entries=Object.entries(article.impacts).sort(([a],[b])=>(b===context)-(a===context));
-  const stamp=sampleMode?article.time+' · Sample market session':timeLabel(article.time)+' · '+article.source;
-  $('article').innerHTML='<p class="eyebrow">'+(sampleMode?'SAMPLE NEWS':article.wire?'MARKET HEADLINE':'DATED DISCLOSURE')+' · '+safeText(article.topic)+'</p><h2 id="article-title">'+safeText(article.title)+'</h2><p class="dialog-copy">'+safeText(stamp)+'</p><p class="dialog-copy">'+safeText(article.body)+'</p><div class="impacts">'+entries.map(([symbol,[effect,reason]])=>'<div class="impact-row"><span class="impact-tag '+effect+'">'+impactLabels[effect]+'</span><strong>'+safeText(companies.get(symbol).name)+'</strong><p>'+safeText(reason)+'</p></div>').join('')+'</div>' +
+  const stamp=legacyMode?article.time+' · Sample market session':timeLabel(article.time)+' · '+article.source;
+  $('article').innerHTML='<p class="eyebrow">'+(legacyMode?'SAMPLE NEWS':article.scenario?'REPLAY SCENARIO':article.wire?'MARKET HEADLINE':'DATED DISCLOSURE')+' · '+safeText(article.topic)+'</p><h2 id="article-title">'+safeText(article.title)+'</h2><p class="dialog-copy">'+safeText(stamp)+'</p><p class="dialog-copy">'+safeText(article.body)+'</p><div class="impacts">'+entries.map(([symbol,[effect,reason]])=>'<div class="impact-row"><span class="impact-tag '+effect+'">'+impactLabels[effect]+'</span><strong>'+safeText(companies.get(symbol).name)+'</strong><p>'+safeText(reason)+'</p></div>').join('')+'</div>' +
     (article.url?'<p class="dialog-copy"><a href="'+safeText(article.url)+'" target="_blank" rel="noopener noreferrer">Read original source</a></p>':'')+
-    (sampleMode && id==='nova-reduction'?'<p class="dialog-copy"><button class="btn primary" data-news-shock>Trace this shock</button></p>':'');
+    (sampleMode && id===shockExample.story?'<p class="dialog-copy"><button class="btn primary" data-news-shock>Trace this shock</button></p>':'');
   closeQuickCard();
   $('article-dialog').showModal();
 }
@@ -1777,8 +2269,13 @@ function renderPerformance(c) {
   if(sampleMode){renderSamplePerformance(c);return;}
   const generation=++historyRenderId;
   const period=state.period;
-  if(!c.symbol || !market.status?.configured) {
-    $('detail').innerHTML=periodButtons()+'<p class="empty">'+(c.symbol?'Configure market data to load actual price history.':'No exchange quote available for this entity.')+'</p>';
+  if(!c.symbol) {
+    $('detail').innerHTML='<p class="empty">No exchange quote available for this entity. View its disclosed connections instead.</p>';
+    return;
+  }
+  if(publicExchange()) {
+    $('detail').innerHTML='<p class="profile-note">See the exchange chart in company research.</p>'+
+      '<button type="button" class="btn secondary" data-open-research="'+c.id+'" data-research-open-tab="chart">Open market chart</button>';
     return;
   }
   const project=period==='1H'||period==='1D'?'intraday':'daily';
@@ -1833,13 +2330,14 @@ function renderRealChart(c,period,series,benchmark,statsDaily,q) {
     (selected.length?'<p class="performance-notice">Latest completed bar: '+safeText(timeLabel(selected.at(-1).at))+'</p>':'')+history;
   if(points.length>=2)drawMarketChart(points,benchmarkPoints);
 }
-function drawMarketChart(points,broad) {
+function drawMarketChart(points,broad,peer=[]) {
   const canvas=$('stock-chart');
   const width=canvas.clientWidth,height=canvas.clientHeight,dpr=Math.min(devicePixelRatio||1,2);
   canvas.width=width*dpr;canvas.height=height*dpr;
   const ctx=canvas.getContext('2d');ctx.scale(dpr,dpr);
-  const a=points.map(p=>p/points[0]*100), b=broad.map(p=>p/broad[0]*100);
-  const lo=Math.min(...a,...b)-.05,hi=Math.max(...a,...b)+.05;
+  const rebased=series=>series.map(value=>value/series[0]*100);
+  const a=rebased(points), b=rebased(broad), related=rebased(peer);
+  const lo=Math.min(...a,...b,...related)-.05,hi=Math.max(...a,...b,...related)+.05;
   ctx.strokeStyle=isLightTheme()?'#dce5e9':'#363640';
   for(let y=18;y<height;y+=22){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(width,y);ctx.stroke();}
   function draw(series,color) {
@@ -1850,7 +2348,8 @@ function drawMarketChart(points,broad) {
     });
     ctx.stroke();
   }
-  if(b.length)draw(b,isLightTheme()?'#6550a0':'#bdabfb');
+  if(b.length>1)draw(b,isLightTheme()?'#6550a0':'#bdabfb');
+  if(related.length>1)draw(related,isLightTheme()?'#2468a2':'#8dc6ff');
   draw(a,a.at(-1)<100?(isLightTheme()?'#af2944':'#ff8999'):a.at(-1)>100?(isLightTheme()?'#087248':'#7ee0a8'):(isLightTheme()?'#536774':'#a4a4b6'));
 }
 
@@ -1858,8 +2357,12 @@ function readWallet(key=paperAccountKey()) { return paper.decode(localStorage.ge
 function renderWallet() { renderPortfolio(); refreshInvest(); }
 
 function renderTicket(c) {
-  if(sampleMode?c.price===undefined:!c.symbol) {
+  if(!hasMarketSymbol(c)) {
     $('detail').innerHTML='<p class="empty">This node has no tradable quote. Select a listed company or fund.</p>';
+    return;
+  }
+  if(publicExchange()) {
+    $('detail').innerHTML='<p class="profile-note">Delayed exchange data is view-only. Use the replay session for paper fills.</p>'+replayAnchorLink(c.id);
     return;
   }
   $('detail').innerHTML='<form id="ticket" class="ticket"><p class="ticket-label">Paper market order · '+c.id+'</p><div class="trade-quote" id="trade-quote"></div><label>Side <select id="order-side"><option value="buy">Buy</option><option value="sell">Sell</option></select></label><label>Shares <input id="order-qty" type="number" value="1" min="1" max="100000" step="1" inputmode="numeric" required></label><p class="ticket-preview" id="ticket-preview"></p><button class="btn primary" id="place-order" type="submit">Place paper order</button><p class="ticket-status" id="ticket-status" aria-live="polite"></p></form>';
@@ -1877,7 +2380,7 @@ function updateTicket() {
   const amount=q && Number.isSafeInteger(qty) && qty>0 ? qty*paper.cents(side==='buy'?q.ask:q.bid) : null;
   $('ticket-preview').textContent=amount===null?'Order total —':(side==='buy'?'Estimated debit ':'Estimated credit ')+money(amount/100)+' · '+(q.recent?'current quote':'last available quote');
   btn.disabled=form.dataset.pending==='true' || !q?.tradable || amount===null;
-  if(status.dataset.result!=='true')status.textContent=q?.tradable?'Simulated fill at bid or ask. No depth or fees.':sampleMode?'Choose a tradable sample.':'A fresh regular-session quote from the real-time feed is required.';
+  if(status.dataset.result!=='true')status.textContent=q?.tradable?'Simulated fill at bid or ask. No depth or fees.':sampleMode?'Choose a tradable instrument.':'A fresh regular-session quote from the real-time feed is required.';
 }
 
 async function placeOrder(event) {
@@ -1961,14 +2464,15 @@ function hasMarketSymbol(c) {
 
 function companyInstrument(c) {
   if(c.listing==='Fund') return 'Exchange-traded fund';
+  if(c.listing==='Demo basket') return 'Demo basket';
   if(c.listing==='Private') return 'Private company';
   if(c.listing==='Research') return 'Research entity';
-  return sampleMode ? 'Sample listed stock' : 'US equity';
+  return legacyMode ? 'Sample listed stock' : 'US equity';
 }
 
 function pricePlaceholder(c) {
   if(!hasMarketSymbol(c))return 'No exchange quote';
-  if(!sampleMode && !market.status?.configured)return 'Feed setup required';
+  if(publicExchange())return 'See exchange chart';
   return 'Quote unavailable';
 }
 
@@ -1977,9 +2481,9 @@ function renderCompanyOverview(c) {
   try { position = readWallet().positions[c.id] ?? null; } catch {}
   const links = companyHighlights(c);
   const news = companyNews(c.id);
-  const note = sampleMode
+  const note = legacyMode
     ? (c.downside ? '<p><strong>Growth driver:</strong> '+safeText(c.upside)+'.</p><p class="profile-note"><strong>What to watch:</strong> '+safeText(c.downside)+'.</p>' : '<p>Follow the investors and suppliers below to see how changes at this entity could reach the demo portfolio.</p>')
-    : '<p>'+safeText(liveProfileNotes[c.id])+'</p>';
+    : '<p>'+safeText(liveProfileNotes[c.id] ?? c.summary)+'</p>';
 
   $('detail').innerHTML =
     '<section class="profile-section"><h3>Market snapshot</h3><dl class="profile-facts">'+
@@ -2091,7 +2595,7 @@ function deskSymbols() {
 
 function quoteCell(c, quote) {
   if (!quote) return '—';
-  const movement=sampleDayMove(c,quote);
+  const movement=investMove(c,quote);
   const extra = movement!==null
     ? '<small class="'+tone(movement)+'">'+signed(movement)+'</small>'
     : !quote.recent ? '<small>Last quote</small>' : '';
@@ -2295,8 +2799,7 @@ function showReview(result, message='') {
 function openReview() {
   try {
     if(sampleMode && market.replay) {
-      clearInterval(market.replay);
-      market.replay=null;
+      pauseReplay();
       renderStatus();
     }
     const result = basketPlan();
@@ -2429,7 +2932,7 @@ function startDesk() {
   });
   $('practice-basket').addEventListener('click',()=>{
     if(!sampleMode || desk.legs.length)return;
-    desk.legs=[{symbol:'ATLS',side:'buy',quantity:'8'},{symbol:'GRID',side:'buy',quantity:'6'}];
+    desk.legs=[{symbol:shockChip,side:'buy',quantity:'8'},{symbol:shockCloud,side:'buy',quantity:'6'}];
     desk.multiplier='1';
     saveDeskDraft();
     renderBasketRows();
@@ -2475,7 +2978,7 @@ const sampleAnchor=Date.parse('2026-11-20T12:15:00+05:30');
 const timelineSpan={'1H':3_600_000,'1D':10_800_000,'1M':31*86_400_000,'1Y':365*86_400_000};
 
 function articleTime(article) {
-  if(!sampleMode)return Date.parse(article.time);
+  if(!legacyMode)return Date.parse(article.time);
   const [,day,month,hour,minute]=article.time.match(/^(\d+) ([A-Za-z]{3}) · (\d\d):(\d\d)$/) ?? [];
   if(!day)return NaN;
   return Date.parse(day+' '+month+' 2026 '+hour+':'+minute+' GMT+0530');
@@ -2503,14 +3006,36 @@ function renderTimeline() {
   $('desk-news-period').textContent=scope;
   $('desk-news-list').innerHTML=list.length ? list.map(article=>{
     const effect=article.impacts[desk.chartSymbol][0];
-    const time=sampleMode?article.time:timeLabel(article.time);
+    const time=legacyMode?article.time:timeLabel(article.time);
     return '<button class="desk-order timeline-story" type="button" data-timeline-article="'+safeText(article.id)+'"><small>'+
       safeText(time)+'</small><strong class="'+effect+'">'+safeText(article.title)+'</strong><span class="desk-order-detail">'+impactLabels[effect]+'</span></button>';
   }).join('') : '<p class="desk-empty">No company headlines in this timeframe.</p>';
   drawDeskChart();
 }
 
+function replayTimeline(c,period) {
+  const currentTick=market.ticks, openTick=(replayOpen-replayStart)/replayStep;
+  const startTick=period==='1H'?Math.max(openTick,currentTick-30):openTick;
+  const session=Array.from({length:currentTick-startTick+1},(_,index)=>{
+    const tick=startTick+index;
+    return {time:tapeTime(tick),value:replayPrice(c,tick)};
+  });
+  if(period==='1H' || period==='1D')return session;
+  const count=period==='1M'?31:90;
+  const horizon=timelineSpan[period];
+  const final=session[0].value;
+  const opening=final/(1+(c.change*(period==='1M'?2.6:8.5))/100);
+  const noise=randomStream(companySeed(c)+period.charCodeAt(1)*97);
+  const history=Array.from({length:count},(_,i)=>{
+    const ratio=i/count;
+    return {time:replayOpen-horizon*(1-ratio),
+      value:opening+(final-opening)*ratio+Math.sin(Math.PI*ratio)*(noise()-.5)*final*.025};
+  });
+  return [...history,...session];
+}
+
 function sampleTimeline(c, period = desk.period) {
+  if(replayMode)return hasMarketSymbol(c)?replayTimeline(c,period):[];
   const end=sampleAnchor+market.ticks*30000;
   const start=end-timelineSpan[period];
   const quote=mark(c);
@@ -2527,11 +3052,11 @@ function sampleTimeline(c, period = desk.period) {
 
 function loadDeskChart() {
   if($('trade-desk').hidden)return;
-  if(!desk.chartSymbol)desk.chartSymbol=deskSymbols()[0]?.id;
+  if(!desk.chartSymbol)desk.chartSymbol=legacyMode?deskSymbols()[0]?.id:'NVDA';
   const c=companies.get(desk.chartSymbol);
   if(!c)return;
   const request=++desk.chartRequest;
-  $('desk-chart-name').textContent=c.name+' · '+c.id+' · '+(sampleMode?'Simulation':'Market history');
+  $('desk-chart-name').textContent=c.name+' · '+c.id+' · '+(replayMode?'Simulated tape':sampleMode?'Simulation':'Market history');
   const quote=mark(c);
   $('desk-chart-cursor').textContent=quote?money(quote.mid):'';
   $('desk-chart-links').innerHTML=companyHighlights(c).slice(0,3).map(link=>{
@@ -2539,15 +3064,22 @@ function loadDeskChart() {
     return '<button class="desk-chart-link" type="button" data-company="'+other.id+'"><i class="dot '+link.type+'"></i>'+safeText(other.name)+'</button>';
   }).join('');
   loadNews(c);
-  if(sampleMode){
-    desk.chart=sampleTimeline(c);
+  const exchange=publicExchange(), exchangeHost=$('desk-exchange-chart');
+  exchangeHost.hidden=!exchange;
+  $('desk-price-area').hidden=exchange;
+  $('desk-periods').hidden=exchange;
+  $('desk-replay-cta').hidden=sampleMode || (regularSession().open && !exchange && market.status?.feed!=='delayed_sip');
+  $('desk-replay-cta').href=modeLink('replay',{page:'trading',symbol:c.id});
+  if(exchange) {
+    desk.chart=[];
     desk.chartMessage='';
+    mountExchangeChart(exchangeHost,c.id,desk.period);
     renderTimeline();
     return;
   }
-  if(!market.status?.configured) {
-    desk.chart=[];
-    desk.chartMessage='Live chart needs market data credentials. The company’s dated disclosures are still available.';
+  if(sampleMode){
+    desk.chart=sampleTimeline(c);
+    desk.chartMessage='';
     renderTimeline();
     return;
   }
@@ -2713,7 +3245,7 @@ function researchNews(c) {
   if (!news.length)return '<p class="desk-empty">There are no headlines linked to this company.</p>';
   return '<div class="research-news-grid">'+news.map(article=>{
     const effect=article.impacts[c.id][0];
-    const timestamp=sampleMode?article.time:timeLabel(article.time);
+    const timestamp=legacyMode?article.time:timeLabel(article.time);
     return '<article class="research-news-card"><small>'+safeText(timestamp)+(article.source?' · '+safeText(article.source):'')+'</small>'+
       '<button type="button" class="'+effect+'" data-research-story="'+safeText(article.id)+'">'+safeText(article.title)+'</button>'+
       '<p>'+safeText(article.impacts[c.id][1])+'</p><span class="impact-tag '+effect+'">'+impactLabels[effect]+'</span></article>';
@@ -2725,23 +3257,23 @@ function marketFacts(c) {
     ['Instrument',companyInstrument(c)],['Sector',c.sector],
     ['Midpoint',quote?money(quote.mid):pricePlaceholder(c)],
     ['Bid / ask',quote?money(quote.bid)+' / '+money(quote.ask):'—'],
-    ['Relationships',String(linksCount(c))],['Data source',sampleMode?'Offline simulation':quote?feedLabel(quote.feed):'Dated company disclosures']
+    ['Relationships',String(linksCount(c))],['Data source',replayMode?'Illustrative session':legacyMode?'Offline simulation':quote?feedLabel(quote.feed):'Dated disclosures and delayed exchange chart']
   ]);
 }
 function financeDetails(c) {
   const sample=sampleFinancials[c.id];
   const filed=reportedFinancials[c.id];
-  if(sampleMode && sample) {
+  if(legacyMode && sample) {
     return '<p class="desk-meta">Illustrative quarter · Fictional company figures</p>'+
       profileFacts([['Revenue',sample[0]],['Revenue growth YoY',sample[1]],['Operating margin',sample[2]]]);
   }
-  if(!sampleMode && filed) {
+  if(!legacyMode && filed) {
     return '<p class="desk-meta">'+safeText(filed.period)+'</p>'+profileFacts(filed.rows)+
       '<p class="profile-note"><a href="'+filed.url+'" target="_blank" rel="noopener noreferrer">Read the earnings release</a></p>';
   }
   const url=companyFilingLinks[c.id];
   return '<p class="desk-empty">A financial snapshot is unavailable for this entity.</p>'+
-    (!sampleMode&&url?'<p><a href="'+url+'" target="_blank" rel="noopener noreferrer">Open the issuer’s documents</a></p>':'');
+    (!legacyMode&&url?'<p><a href="'+url+'" target="_blank" rel="noopener noreferrer">Open the issuer’s documents</a></p>':'');
 }
 function researchPeers(c) {
   const peers=[...companies.values()].filter(item=>item.id!==c.id && item.group===c.group && hasMarketSymbol(item));
@@ -2782,25 +3314,33 @@ function renderResearch() {
   researchPanel.chartObserver?.disconnect();
   const request=++researchPanel.request;
   const mapped=links.filter(link=>link.to===c.id || link.from===c.id);
-  $('research-hero').innerHTML='<p class="eyebrow">'+safeText(c.id)+' · '+(sampleMode?'SIMULATION':'COMPANY RESEARCH')+'</p><h2 id="research-title">'+safeText(c.name)+'</h2><p class="dialog-copy">'+safeText(c.summary)+'</p>';
+  $('research-hero').innerHTML='<p class="eyebrow">'+safeText(c.id)+' · '+(legacyMode?'SIMULATION':replayMode?'COMPANY RESEARCH · REPLAY':'COMPANY RESEARCH')+'</p><h2 id="research-title">'+safeText(c.name)+'</h2><p class="dialog-copy">'+safeText(c.summary)+'</p>';
   $('research-tabs').querySelectorAll('[data-research-tab]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.researchTab===researchPanel.tab)));
   let content='';
   switch(researchPanel.tab) {
     case 'overview': {
       const relationships=companyHighlights(c).slice(0,3);
-      content=marketFacts(c)+'<div class="research-block"><h3>What to watch</h3><p class="dialog-copy">'+safeText(sampleMode?(c.downside||'Follow the company’s linked suppliers and investments to see how a shock could spread.'):liveProfileNotes[c.id])+'</p></div>'+
+      content=marketFacts(c)+'<div class="research-block"><h3>What to watch</h3><p class="dialog-copy">'+safeText((legacyMode?c.downside:liveProfileNotes[c.id]) ?? c.summary)+'</p></div>'+
         '<div class="research-block"><h3>Key connections</h3>'+relationships.map(link=>relationshipCard(c,link)).join('')+'</div>';
       break;
     }
-    case 'chart':
-      content = hasMarketSymbol(c) ?
-        '<div class="invest-pills" aria-label="Company chart timeframe">'+investPeriodButtons('data-research-period',researchPanel.period)+'</div>'+
-        '<div class="invest-stock-chart"><canvas id="research-chart" aria-label="Company price history" role="img"></canvas><p id="research-chart-message" hidden></p></div>'+
-        '<p class="desk-meta">'+(sampleMode?'Fictional price history':'Market price history')+'</p>'+
-        '<button type="button" class="invest-trade" data-invest-trade="'+c.id+'">Open paper order</button>' :
+    case 'chart': {
+      const chartable=hasMarketSymbol(c);
+      const exchange=publicExchange();
+      content = chartable ?
+        (exchange?'':'<div class="invest-pills" aria-label="Company chart timeframe">'+investPeriodButtons('data-research-period',researchPanel.period)+'</div>')+
+        (exchange?'<div id="research-exchange-chart" class="exchange-chart"></div>':
+          '<div class="invest-stock-chart"><canvas id="research-chart" aria-label="Company price history" role="img"></canvas><p id="research-chart-message" hidden></p></div>'+
+          '<p class="desk-meta">'+(sampleMode?'Simulated price history':'Market price history')+'</p>')+
+        (exchange?replayAnchorLink(c.id):'<button type="button" class="invest-trade" data-invest-trade="'+c.id+'">Open paper order</button>') :
         '<p class="desk-empty">'+safeText(companyInstrument(c))+' · No price series.</p>';
-      if (hasMarketSymbol(c)) requestAnimationFrame(() => loadResearchChart(c,request));
+      if (chartable) requestAnimationFrame(() => {
+        if(researchPanel.request!==request || !$('research-dialog').open)return;
+        if(exchange)mountExchangeChart($('research-exchange-chart'),c.id,researchPanel.period);
+        else loadResearchChart(c,request);
+      });
       break;
+    }
     case 'financials': content=financeDetails(c); break;
     case 'peers': content=researchPeers(c); break;
     case 'technicals': content=researchTechnicals(c,request); break;
@@ -2818,8 +3358,8 @@ function renderResearch() {
       content='<div class="research-block"><h3>Commercial deals</h3>'+
         (commercial.length?commercial.map(link=>relationshipCard(c,link)).join(''):'<p class="desk-empty">No commercial deals are mapped.</p>')+
         '</div><div class="research-block"><h3>Source documents</h3>'+
-        (issuer&&!sampleMode?'<p><a href="'+issuer+'" target="_blank" rel="noopener noreferrer">Open issuer filings and disclosures</a></p>':'')+
-        (documents.length?'<ul class="research-docs">'+documents.map(link=>'<li><a href="'+link.url+'" target="_blank" rel="noopener noreferrer">'+safeText(link.label)+'</a><small> '+safeText(link.date)+'</small></li>').join('')+'</ul>':'<p class="desk-meta">'+(sampleMode?'Simulation documents are represented by the dated events in this workspace.':'No further documents in this dataset.')+'</p>')+'</div>';
+        (issuer&&!legacyMode?'<p><a href="'+issuer+'" target="_blank" rel="noopener noreferrer">Open issuer filings and disclosures</a></p>':'')+
+        (documents.length?'<ul class="research-docs">'+documents.map(link=>'<li><a href="'+link.url+'" target="_blank" rel="noopener noreferrer">'+safeText(link.label)+'</a><small> '+safeText(link.date)+'</small></li>').join('')+'</ul>':'<p class="desk-meta">'+(legacyMode?'Simulation documents are represented by the dated events in this workspace.':'No further documents in this dataset.')+'</p>')+'</div>';
       break;
     }
   }
@@ -2839,11 +3379,18 @@ async function loadResearchChart(c, request) {
   if (request !== researchPanel.request || !$('research-dialog').open) return;
   const canvas = $('research-chart'), status = $('research-chart-message');
   canvas.investPoints = points;
-  researchPanel.chartObserver = new ResizeObserver(() => paintInvestChart(canvas,points));
+  researchPanel.chartObserver = new ResizeObserver(() => paintInvestChart(canvas,canvas.investPoints));
   researchPanel.chartObserver.observe(canvas);
   paintInvestChart(canvas,points);
   status.hidden = points.length > 1;
   status.textContent = message || 'Price history is unavailable.';
+}
+
+function updateReplayResearchChart() {
+  const chart=$('research-chart'), company=companies.get(researchPanel.symbol);
+  if(!chart || !company)return;
+  chart.investPoints=sampleTimeline(company,researchPanel.period);
+  paintInvestChart(chart,chart.investPoints);
 }
 
 document.getElementById('research-dialog').addEventListener('close',() => researchPanel.chartObserver?.disconnect());
@@ -2851,7 +3398,7 @@ document.addEventListener('click',event=>{
   const el=event.target.closest('button');
   if(!el)return;
   const {openResearch:target,researchTab,researchStory,company}=el.dataset;
-  if(target)openResearch(target);
+  if(target)openResearch(target,el.dataset.researchOpenTab || 'overview');
   if(researchTab){researchPanel.tab=researchTab;renderResearch();}
   if(el.dataset.researchPeriod){
     researchPanel.period=el.dataset.researchPeriod;
@@ -2873,7 +3420,7 @@ const portfolioView={tab:'holdings',sort:'symbol',search:'',initialized:false};
 const localAccounts=()=>{
   try {
     const list=JSON.parse(localStorage.getItem(stateKey('accounts')));
-    return [{id:'default',name:sampleMode?'Simulation account':'Live paper account'},...(Array.isArray(list)?list.filter(account=>
+    return [{id:'default',name:replayMode?'Market Replay account':legacyMode?'Simulation account':'Live paper account'},...(Array.isArray(list)?list.filter(account=>
       account && /^[a-f0-9-]{36}$/i.test(account.id) && typeof account.name==='string').slice(0,11):[])];
   } catch {return [{id:'default',name:'Paper account'}];}
 };
@@ -2899,11 +3446,10 @@ function portfolioSnapshot(wallet) {
     const company=companies.get(id);
     const quote=company ? mark(company) : null;
     const value=quote?paper.cents(quote.mid)*p.quantity:null;
-    const history=company?.symbol && market.histories[company.symbol+'/daily']?.bars;
     const prior=sampleMode
       ? (company?.change!==undefined && company.price!==undefined ? company.price/(1+company.change/100) : null)
-      : history?.at(-1)?.close;
-    const day=quote?.recent && prior ? (quote.mid/prior-1)*100 : null;
+      : quote?.previousClose;
+    const day=quote && prior ? (quote.mid/prior-1)*100 : null;
     const dayPnl=day===null?null:(paper.cents(quote.mid)-paper.cents(prior))*p.quantity;
     return {id,company,...p,value,day,dayPnl,pnl:value===null?null:value-p.cost,quote};
   });
@@ -3015,17 +3561,7 @@ function switchPaperAccount(id) {
   loadDeskDraft();
   renderPortfolio();
   if(!$('trade-desk').hidden)showTrading();
-  loadPortfolioDaily();
   $('announcer').textContent='Switched to '+activePaperAccount().name+'.';
-}
-function loadPortfolioDaily() {
-  if(sampleMode || !market.status?.configured)return;
-  let held;
-  try{held=Object.keys(readWallet().positions);}catch{return;}
-  for (const id of held) {
-    const c=companies.get(id);
-    if(c?.symbol)getHistory(c.symbol,'daily').then(()=>{renderPortfolio();}).catch(()=>{});
-  }
 }
 function exportPortfolio() {
   const wallet=readWallet(), stats=portfolioSnapshot(wallet);
@@ -3042,7 +3578,7 @@ function exportPortfolio() {
   const file=new Blob([rows.map(row=>row.map(escapeCell).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8'});
   const link=document.createElement('a');
   link.href=URL.createObjectURL(file);
-  link.download=(sampleMode?'aster-simulation-':'aster-live-')+(orders?'orders.csv':'holdings.csv');
+  link.download=('aster-'+activeMode+'-')+(orders?'orders.csv':'holdings.csv');
   link.click();
   setTimeout(()=>URL.revokeObjectURL(link.href),5000);
 }
@@ -3162,8 +3698,8 @@ const goalAmount = amount => money(amount).replace(/\.00$/, '');
 const listedCompanies = () => [...companies.values()].filter(hasMarketSymbol);
 function investMove(company,quote) {
   if (sampleMode) return sampleDayMove(company,quote);
-  const prior = market.histories[company.symbol+'/daily']?.bars.at(-1)?.close;
-  return quote?.recent && prior > 0 ? (quote.mid/prior-1)*100 : null;
+  const prior = quote?.previousClose;
+  return prior > 0 ? (quote.mid/prior-1)*100 : null;
 }
 
 function readGoals() {
@@ -3172,7 +3708,7 @@ function readGoals() {
     if (Array.isArray(data)) return data;
   } catch {}
   return defaultGoals.map(goal => Object.fromEntries(Object.entries(goal).map(([key,value]) =>
-    [key, typeof value === 'number' && !sampleMode ? value/100 : value])));
+    [key, typeof value === 'number' && !legacyMode ? value/100 : value])));
 }
 
 function renderGoals() {
@@ -3253,8 +3789,14 @@ function renderInvestOverview() {
   if ($('invest-periods').querySelector('[aria-pressed="true"]')?.dataset.investPeriod !== period) {
     $('invest-periods').innerHTML = investPeriodButtons('data-invest-period',period);
   }
-  $('invest-chart-title').textContent = sampleMode ? 'Market 500' : 'SPY';
-  $('invest-index-label').textContent = sampleMode ? 'FICTIONAL MARKET BENCHMARK' : 'MARKET BENCHMARK';
+  const exchange=publicExchange(), exchangeHost=$('overview-exchange-chart');
+  exchangeHost.hidden=!exchange;
+  canvas.parentElement.hidden=exchange;
+  $('invest-chart-range').hidden=exchange;
+  $('invest-periods').hidden=exchange;
+  $('invest-chart-title').textContent = legacyMode ? 'Market 500' : 'SPY';
+  $('invest-index-label').textContent = legacyMode ? 'FICTIONAL MARKET BENCHMARK' :
+    replayMode ? 'BENCHMARK · SIMULATED PRICES' : exchange ? 'MARKET BENCHMARK · DELAYED' : 'MARKET BENCHMARK · ALPACA';
   const render = (points,message='') => {
     if (request !== invest.overviewRequest || invest.page !== 'overview') return;
     canvas.investPoints = points;
@@ -3264,17 +3806,20 @@ function renderInvestOverview() {
     $('invest-index-value').textContent = last ? (sampleMode ? last.value.toFixed(2) : money(last.value)) : '—';
     $('invest-index-change').className = tone(change);
     $('invest-index-change').textContent = change === null ? '' : signed(change);
-    const time = point => new Date(point.time).toLocaleString('en-IN',period==='1D'||period==='1H'
-      ? {hour:'2-digit',minute:'2-digit',timeZone:'Asia/Kolkata'} : {month:'short',day:'numeric',year:'numeric',timeZone:'Asia/Kolkata'});
+    const timeZone=legacyMode?'Asia/Kolkata':'America/New_York';
+    const time = point => new Date(point.time).toLocaleString('en-US',period==='1D'||period==='1H'
+      ? {hour:'2-digit',minute:'2-digit',timeZone,timeZoneName:'short'} : {month:'short',day:'numeric',year:'numeric',timeZone});
     $('invest-chart-range').innerHTML = first ? '<span>'+time(first)+'</span><span>'+time(last)+'</span>' : '';
     $('invest-chart-empty').hidden = Boolean(first);
     $('invest-chart-empty').textContent = message;
   };
   if (sampleMode) {
-    const series = ['ATLS','GRID','LUMN'].map(id => sampleTimeline(companies.get(id),period));
+    const series = (replayMode?['SPY']:['ATLS','GRID','LUMN']).map(id => sampleTimeline(companies.get(id),period));
     render(series[0].map((point,i) => ({time:point.time,value:series.reduce((sum,points) => sum+points[i].value/points[0].value,0)*100/series.length})));
-  } else if (!market.status?.configured) {
-    render([],'Connect a market feed to show benchmark history.');
+  } else if (exchange) {
+    $('invest-index-value').textContent='';
+    $('invest-index-change').textContent='';
+    mountExchangeChart(exchangeHost,'SPY',period);
   } else {
     const kind = period === '1H' || period === '1D' ? 'intraday' : 'daily';
     getHistory('SPY',kind).then(bars => {
@@ -3291,12 +3836,14 @@ function renderInvestOverview() {
     '<button type="button" class="invest-mover" data-open-research="'+company.id+'"><span class="invest-mover-symbol">'+company.id+'</span>'+
     '<span><strong>'+safeText(company.name)+'</strong><small>'+safeText(company.sector)+'</small></span>'+
     '<strong class="'+tone(move)+'">'+signed(move)+'</strong></button>'
-  ).join('') : '<p class="invest-empty">Day moves are unavailable in this feed.</p>';
+  ).join('') : '<p class="invest-empty">'+(exchange?'Open Markets for the delayed quote board.':'Day moves will appear when a quote and previous close are available.')+'</p>';
 }
 
 function renderInvestTable() {
   const watchlist = invest.page === 'watchlist';
   const saved = readWatch();
+  const exchange=publicExchange();
+  $('invest-market-filters').hidden=exchange;
   const rows = listedCompanies().map(company => {
     const quote = mark(company);
     return {company,quote,move:investMove(company,quote)};
@@ -3315,14 +3862,17 @@ function renderInvestTable() {
   }
   outlet.innerHTML = '<p class="invest-result-count">'+rows.length+(rows.length===1?' instrument':' instruments')+'</p>'+
     '<div class="invest-table-wrap"><table class="invest-table"><thead><tr><th scope="col">Instrument</th><th scope="col">Sector</th>'+
-    '<th scope="col">Midpoint</th><th scope="col">Day change</th><th scope="col">Watch</th><th scope="col">Order</th></tr></thead><tbody>'+
+    (exchange?'<th scope="col">Exchange chart</th>':'<th scope="col">Midpoint</th><th scope="col">Day change</th>')+
+    '<th scope="col">Watch</th><th scope="col">Order</th></tr></thead><tbody>'+
     rows.map(({company,quote,move}) => {
       const {id,name,sector} = company, pinned = saved.includes(id);
       return '<tr><td><button type="button" class="invest-company-button" data-open-research="'+id+'">'+safeText(name)+'<small>'+id+'</small></button></td>'+
-        '<td>'+safeText(sector)+'</td><td>'+(quote?money(quote.mid):'—')+'</td><td class="'+tone(move)+'">'+(move===null?'—':signed(move))+'</td>'+
+        '<td>'+safeText(sector)+'</td>'+
+        (exchange?'<td><button type="button" class="invest-text-button" data-open-research="'+id+'" data-research-open-tab="chart">View chart</button></td>':
+          '<td>'+(quote?money(quote.mid):'—')+'</td><td class="'+tone(move)+'">'+(move===null?'—':signed(move))+'</td>')+
         '<td><button type="button" class="invest-watch-toggle" data-invest-watch="'+id+'" aria-pressed="'+pinned+'" aria-label="'+
         (pinned?'Remove '+safeText(name)+' from watchlist':'Add '+safeText(name)+' to watchlist')+'">'+(pinned?'★':'☆')+'</button></td>'+
-        '<td><button type="button" class="invest-trade" data-invest-trade="'+id+'">Trade</button></td></tr>';
+        '<td>'+(exchange?replayAnchorLink(id):'<button type="button" class="invest-trade" data-invest-trade="'+id+'">Trade</button>')+'</td></tr>';
     }).join('')+'</tbody></table></div>';
 }
 
@@ -3336,9 +3886,11 @@ function switchInvestPage(name) {
   const website = investPages.includes(name);
   document.body.dataset.website = String(website);
   for (const page of investPages) $('invest-'+page).hidden = name !== page;
-  for (const id of ['ticker-strip','account-metrics','market-status']) $(id).hidden = website;
+  for (const id of ['ticker-strip','account-metrics']) $(id).hidden = website;
+  $('market-status').hidden=legacyMode && website;
   if (name === 'goals' || name === 'overview') renderGoals();
   refreshInvest();
+  mountQuotesBoard();
 }
 
 function applyAsterTheme(theme) {
@@ -3352,6 +3904,11 @@ function applyAsterTheme(theme) {
   });
   paintGraph();
   drawDeskChart();
+  if (activeMode && !sampleMode) {
+    refreshInvest();
+    mountQuotesBoard();
+    if (!$('trade-desk').hidden)loadDeskChart();
+  }
   if (state.tab === 'performance') renderPerformance(companies.get(state.selected));
 }
 
@@ -3368,7 +3925,7 @@ function startInvest() {
   }).observe($('invest-market-chart'));
   document.querySelector('[data-home-link]').addEventListener('click',event => {
     event.preventDefault();
-    openWorkspace('overview');
+    if(activeMode)openWorkspace('overview');
   });
   $('invest-market-sector').innerHTML = '<option value="">All sectors</option>'+
     [...new Set(listedCompanies().map(company => company.sector))].sort().map(sector => '<option>'+safeText(sector)+'</option>').join('');
@@ -3427,20 +3984,25 @@ function startInvest() {
 </script>
 <script>
 'use strict';
-const sampleMode=document.body.dataset.simulationOnly==='true' || location.protocol==='file:' || new URLSearchParams(location.search).get('mode')!=='live';
-const {groups,companies,links,articles,research}=sampleMode?sampleDataset():liveDataset();
-const homeCompany=sampleMode?'NOVA':'NVDA';
+const {groups,companies,links,articles,research}=replayMode?replayDataset():legacyMode?sampleDataset():liveDataset();
+const symbolFromMode=modeParams.get('symbol')?.toUpperCase();
+const homeCompany=companies.has(symbolFromMode)?symbolFromMode:legacyMode?'NOVA':'NVDA';
+const shockExample=replayMode?replayStress:exampleStress;
 const $ = (id) => document.getElementById(id);
 const stage = $('stage'), viewport = $('graph'), canvas = $('edges'), query = $('search');
-const edgeColors = {funding:'#f1bb71', spend:'#7eb8df', holding:'#bdabfb', partner:'#a5b4c4'};
-const lightEdgeColors = {funding:'#9c5419',spend:'#28738d',holding:'#7153b1',partner:'#607780'};
+const edgeColors = {funding:'#9acbff',spend:'#4c9bff',holding:'#7190ed',partner:'#4877b1'};
+const lightEdgeColors = {funding:'#2454aa',spend:'#0573ae',holding:'#3956b9',partner:'#365e88'};
+const edgePatterns = {funding:[],spend:[7,3],holding:[3,3],partner:[1.5,3.8]};
 const isLightTheme = () => document.documentElement.dataset.theme === 'light';
 const edgeNames = {funding:'equity links', spend:'purchase links', holding:'fund holdings', partner:'partnerships'};
 const impactLabels = {up:'Potential upside',down:'Potential downside',flat:'Mixed or unclear'};
 const periodNames = ['1H','1D','1M','1Y'];
-const pathNodes = new Set(['NOVA','GRID','ATLS','INNO']);
-const paths = new Set(['NOVA/GRID/spend','GRID/ATLS/spend','INNO/ATLS/holding','INNO/GRID/holding']);
-const fmt = (n) => '₹' + n.toLocaleString('en-IN');
+const {trigger:shockTrigger,chip:shockChip,cloud:shockCloud,fund:shockFund}=shockExample;
+const pathNodes = new Set([shockTrigger,shockChip,shockCloud,shockFund]);
+const paths = new Set([shockTrigger+'/'+shockCloud+'/spend',shockCloud+'/'+shockChip+'/spend',
+  shockFund+'/'+shockChip+'/holding',shockFund+'/'+shockCloud+'/holding']);
+const shockMoves = {[shockChip]:-5,[shockCloud]:-8,[shockFund]:-4.4};
+const fmt = (n) => (legacyMode?'₹':'$') + n.toLocaleString(legacyMode?'en-IN':'en-US');
 const signed = (n) => (n >= 0 ? '+' : '−') + Math.abs(n).toFixed(2) + '%';
 const glyph = (id) => id.slice(0,2);
 const state = {selected:homeCompany, filter:'all', isolate:false, zoom:1, tab:'overview', period:'1D', shock:false, results:[], activeResult:-1};
@@ -3524,7 +4086,7 @@ function paintGraph() {
     const start = positions.get(link.from), end = positions.get(link.to);
     if (!start || !end) continue;
     const emphasis = weight(link);
-    const color = emphasis === 2 ? (isLightTheme()?'#b85c19':'#ffbd73') : (isLightTheme()?lightEdgeColors:edgeColors)[link.type];
+    const color = emphasis === 2 ? (isLightTheme()?'#0c5dcc':'#bee9ff') : (isLightTheme()?lightEdgeColors:edgeColors)[link.type];
     const sameLane = start.x === end.x;
     const dir = end.x >= start.x ? 1 : -1;
     const offset = ((link.id % 5)-2) * 4;
@@ -3538,9 +4100,9 @@ function paintGraph() {
     const control2 = {x:x2 + span*(sameLane ? 1 : -dir), y:y2 + t + offset};
     if (glow) {
       const braid = ctx.createLinearGradient(x1,y1,x2,y2);
-      braid.addColorStop(0,'#c2782626');
-      braid.addColorStop(.51,emphasis?'#ffb04c7d':'#e4a24c38');
-      braid.addColorStop(1,'#ffd17c2d');
+      braid.addColorStop(0,color+'20');
+      braid.addColorStop(.51,color+(emphasis?'66':'28'));
+      braid.addColorStop(1,color+'29');
       ctx.strokeStyle = braid;
       for (const thread of [-4,4]) {
         ctx.lineWidth=emphasis?1.2:.65;
@@ -3550,14 +4112,14 @@ function paintGraph() {
         ctx.stroke();
       }
       if(emphasis || link.type==='funding' || link.type==='spend') {
-        pulsePaths.push({x1,y1,x2,y2,control1,control2,emphasis,id:link.id});
+        pulsePaths.push({x1,y1,x2,y2,control1,control2,emphasis,id:link.id,color});
       }
     }
     ctx.strokeStyle = color + (emphasis === 2 ? 'ec' : emphasis === 1 ? 'ce' : (glow?'7c':'58'));
     ctx.lineWidth = emphasis === 2 ? 3 : emphasis === 1 ? 1.72 : .89;
     ctx.shadowBlur = emphasis === 2 ? 11 : emphasis === 1 ? 5 : 0;
     ctx.shadowColor = color;
-    ctx.setLineDash(link.type === 'partner' ? [3,4] : []);
+    ctx.setLineDash(edgePatterns[link.type]);
     ctx.beginPath();
     ctx.moveTo(x1,y1);
     ctx.bezierCurveTo(control1.x,control1.y,control2.x,control2.y,x2,y2);
@@ -3581,7 +4143,7 @@ function paintGraph() {
 }
 
 function updatePulses() {
-  if(glow && !reducedMotion.matches && !document.hidden && !$('network-view').hidden) {
+  if(activeMode && glow && !reducedMotion.matches && !document.hidden && !$('network-view').hidden) {
     if(!pulseFrame)pulseFrame=requestAnimationFrame(drawPulses);
   } else {
     cancelAnimationFrame(pulseFrame);
@@ -3602,7 +4164,7 @@ function drawPulses(now) {
     const x=u*u*u*path.x1+3*u*u*t*path.control1.x+3*u*t*t*path.control2.x+t*t*t*path.x2;
     const y=u*u*u*path.y1+3*u*u*t*path.control1.y+3*u*t*t*path.control2.y+t*t*t*path.y2;
     ctx.globalAlpha=Math.sin(t*Math.PI)*(path.emphasis?.92:.64);
-    ctx.fillStyle='#ffd68c';
+    ctx.fillStyle=path.emphasis && !isLightTheme()?'#d8edff':path.color;
     ctx.beginPath();
     ctx.arc(x,y,path.emphasis?2.2:1.35,0,Math.PI*2);
     ctx.fill();
@@ -3642,7 +4204,7 @@ function centerNode(id) {
 function renderInspector() {
   const c = companies.get(state.selected);
   const news = companyNews(c.id);
-  $('entity').innerHTML = '<div class="entity"><div class="entity-top"><span class="entity-glyph" aria-hidden="true">' + glyph(c.id) + '</span><div><h2 id="entity-title" tabindex="-1">' + c.name + '</h2><small>' + c.id + ' · ' + c.sector + ' · ' + (c.listing === 'Private' ? 'Private' : c.listing === 'Research' ? 'Research entity' : c.listing === 'Fund' ? 'ETF' : sampleMode ? 'Sample listed' : 'US equity') + '</small></div><span class="live-entity-quote" id="entity-quote"></span></div><p>' + c.summary + '</p></div>';
+  $('entity').innerHTML = '<div class="entity"><div class="entity-top"><span class="entity-glyph" aria-hidden="true">' + glyph(c.id) + '</span><div><h2 id="entity-title" tabindex="-1">' + c.name + '</h2><small>' + c.id + ' · ' + c.sector + ' · ' + companyInstrument(c) + '</small></div><span class="live-entity-quote" id="entity-quote"></span></div><p>' + c.summary + '</p></div>';
   $('news-count').textContent = news.length;
   $('detail-tabs').querySelectorAll('[data-tab]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.tab === state.tab)));
   $('detail').scrollTop = 0;
@@ -3650,7 +4212,7 @@ function renderInspector() {
   if (state.tab === 'connections') renderConnections(c);
   if (state.tab === 'performance') renderPerformance(c);
   if (state.tab === 'trade') renderTicket(c);
-  if (state.tab === 'news') $('detail').innerHTML = '<div class="news-legend"><span class="up">● Upside</span><span class="down">● Downside</span><span class="flat">● Mixed / unclear</span></div>' + (!sampleMode && !market.status?.configured ? '<p class="performance-notice">Showing archived disclosures. Live news requires market credentials.</p>' : !sampleMode && market.news[c.id]?.error ? '<p class="performance-notice">News feed unavailable. Showing the latest known updates.</p>' : '') + (news.length ? news.map(article => headline(article,c.id)).join('') : '<p class="empty">' + (sampleMode?'No sample news for this company.':'No sourced updates available for this entity yet.') + '</p>');
+  if (state.tab === 'news') $('detail').innerHTML = '<div class="news-legend"><span class="up">● Upside</span><span class="down">● Downside</span><span class="flat">● Mixed / unclear</span></div>' + (publicExchange() ? '<p class="performance-notice">Showing dated company disclosures.</p>' : !sampleMode && market.news[c.id]?.error ? '<p class="performance-notice">News feed unavailable. Showing the latest known updates.</p>' : '') + (news.length ? news.map(article => headline(article,c.id)).join('') : '<p class="empty">' + (sampleMode?'No sample news for this company.':'No sourced updates available for this entity yet.') + '</p>');
   $('headlines').innerHTML = state.tab !== 'news' && news.length ? '<div class="headlines"><div class="headline-head"><h3>Latest news</h3><button data-tab="news">All news</button></div>' + headline(news[0],c.id) + '</div>' : '';
   updateEntityQuote();
 }
@@ -3690,32 +4252,26 @@ function renderSamplePerformance(c) {
     $('detail').innerHTML = '<p class="empty"><strong>Private company</strong><br>Explore its investors and commercial ties in the Connections tab.</p>';
     return;
   }
-  const daily = state.shock && c.id === 'ATLS' ? -5 : state.shock && c.id === 'GRID' ? -8 : state.shock && c.id === 'INNO' ? -4.4 : c.change;
-  const move = daily*[.28,1,2.6,8.5][horizon];
-  const displayPrice = state.shock ? c.price * (1 + (c.id === 'ATLS' ? -.05 : c.id === 'GRID' ? -.08 : c.id === 'INNO' ? -.044 : 0)) : c.price;
+  const daily = state.shock ? (shockMoves[c.id] ?? c.change) : c.change;
+  const tape = sampleTimeline(c,state.period);
+  const move = (tape.at(-1).value/tape[0].value-1)*100;
+  const displayPrice = mark(c).mid;
   const totals = [0,0,0];
   for (const value of scenarioReturns({...c,change:daily},horizon)) totals[value>10 ? 0 : value<-10 ? 2 : 1]++;
   const name = ['up','flat','down'];
   $('detail').innerHTML =
-    '<div class="periods" role="group" aria-label="Performance timeframe">' + periodNames.map(label => '<button data-period="' + label + '" aria-pressed="' + (label === state.period) + '">' + label + '</button>').join('') + '</div><div class="performance-meta"><span class="price-num">' + fmt(displayPrice) + '</span><strong class="' + (move>=0?'up':'down') + '">' + signed(move) + '</strong></div><canvas class="mini-chart" id="stock-chart" role="img" aria-label="' + c.name + ' fictional ' + state.period + ' line chart, ' + signed(move) + '"></canvas><div class="odds"><h3 class="eyebrow">SIMULATED OUTCOMES</h3><div class="odds-bar" aria-hidden="true">' + totals.map(n => '<span style="width:' + n + '%"></span>').join('') + '</div><div class="odds-label">' + totals.map((n,i) => '<span class="' + name[i] + '">' + n + '% ' + name[i] + '</span>').join('') + '</div></div><p class="performance-notice">100 fictional outcomes for ' + state.period + '. Flat is within ±0.1%.</p>' +
+    '<div class="periods" role="group" aria-label="Performance timeframe">' + periodNames.map(label => '<button data-period="' + label + '" aria-pressed="' + (label === state.period) + '">' + label + '</button>').join('') + '</div><div class="performance-meta"><span class="price-num">' + money(displayPrice) + '</span><strong class="' + (move>=0?'up':'down') + '">' + signed(move) + '</strong></div><canvas class="mini-chart" id="stock-chart" role="img" aria-label="' + c.name + ' fictional ' + state.period + ' line chart, ' + signed(move) + '"></canvas><div class="odds"><h3 class="eyebrow">SIMULATED OUTCOMES</h3><div class="odds-bar" aria-hidden="true">' + totals.map(n => '<span style="width:' + n + '%"></span>').join('') + '</div><div class="odds-label">' + totals.map((n,i) => '<span class="' + name[i] + '">' + n + '% ' + name[i] + '</span>').join('') + '</div></div><p class="performance-notice">100 fictional outcomes for ' + state.period + '. Flat is within ±0.1%.</p>' +
     (c.upside ? '<p class="performance-notice"><strong class="up">Upside:</strong> ' + c.upside + '<br><strong class="down">Risk:</strong> ' + c.downside + '</p>' : '');
-  const graph = $('stock-chart');
-  const width = graph.clientWidth, height = graph.clientHeight;
-  const dpr = Math.min(devicePixelRatio || 1,2);
-  graph.width = Math.round(width*dpr);
-  graph.height = Math.round(height*dpr);
-  const ctx = graph.getContext('2d');
-  ctx.scale(dpr,dpr);
-  const draw = randomStream(companySeed(c)+horizon);
-  const values = Array.from({length:25},(_,index) => move*index/24 + Math.sin(Math.PI*index/24)*(draw()-.5)*Math.max(.7,Math.abs(move)*.45));
-  const lo = Math.min(...values)-.12, hi = Math.max(...values)+.12;
-  ctx.strokeStyle = isLightTheme()?'#dce5e9':'#3b2c20';
-  for(let y=18;y<height;y+=22) {ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(width,y);ctx.stroke();}
-  ctx.strokeStyle = move >= 0 ? (isLightTheme()?'#087248':'#7ee0a8') : (isLightTheme()?'#af2944':'#ff8999');
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  values.forEach((value,i) => { const x=6+i*(width-12)/24, y=height-9-(value-lo)/(hi-lo)*(height-18); if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y); });
-  ctx.stroke();
+  const values=tape.map(point=>point.value);
+  const benchmark=replayMode && c.id!=='SPY'?sampleTimeline(companies.get('SPY'),state.period).map(point=>point.value):[];
+  const peer=replayMode?companyHighlights(c).map(link=>companies.get(link.from===c.id?link.to:link.from))
+    .find(company=>hasMarketSymbol(company) && company.id!=='SPY' && company.listing!=='Demo basket'):null;
+  const peerValues=peer?sampleTimeline(peer,state.period).map(point=>point.value):[];
+  const summary=benchmark.length?' · SPY '+signed((benchmark.at(-1)/benchmark[0]-1)*100):'';
+  const peerSummary=peerValues.length?' · '+peer.id+' '+signed((peerValues.at(-1)/peerValues[0]-1)*100):'';
+  $('stock-chart').insertAdjacentHTML('afterend','<div class="chart-legend"><span>Base 100'+summary+
+    '</span>'+(peerSummary?'<span class="chart-peer">'+peerSummary.slice(3)+'</span>':'')+'</div>');
+  drawMarketChart(values,benchmark,peerValues);
 }
 
 function activateNav(name) {
@@ -3731,7 +4287,6 @@ function activateNav(name) {
   $('portfolio').hidden = !sampleMode || !showWallet;
   switchInvestPage(name);
   if(name==='trading')showTrading();
-  if(name==='portfolio')loadPortfolioDaily();
   updatePulses();
 }
 function openWorkspace(name,scroll=true) {
@@ -3814,6 +4369,7 @@ query.addEventListener('keydown',(event) => {
 $('search-wrap').addEventListener('focusout',event=>{if(!$('search-wrap').contains(event.relatedTarget)) closeSearch();});
 $('search-results').addEventListener('mousedown',event=>event.preventDefault());
 document.addEventListener('keydown', event => {
+  if(!activeMode)return;
   if(event.key==='Escape' && !$('node-popover').hidden && !document.querySelector('dialog[open]')) {closeQuickCard(true);return;}
   if ((event.key === '/' && !['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName) && !document.querySelector('dialog[open]')) || (event.key.toLowerCase() === 'k' && (event.ctrlKey || event.metaKey) && !document.querySelector('dialog[open]'))) {
     event.preventDefault();
@@ -3833,14 +4389,15 @@ function setFilter(filter) {
   paintGraph();
 }
 function renderLossLimit() {
-  const atlas = 5000 - Number($('shock-transfer').value);
-  const gridLoss = 3000*.08;
-  const atlasLoss = atlas*.05;
-  const threshold = atlas ? ((500-gridLoss)/atlas*100).toFixed(1)+'%' : 'No Atlas exposure';
-  $('shock-limit-result').innerHTML = '<div><span>Atlas contribution (−5%)</span><strong class="down">−'+fmt(atlasLoss)+'</strong></div>'+
-    '<div><span>GridCloud contribution (−8%)</span><strong class="down">−'+fmt(gridLoss)+'</strong></div>'+
-    '<div><span>Simulated loss</span><strong class="down">−'+fmt(atlasLoss+gridLoss)+'</strong></div>'+
-    '<div><span>Atlas decline at the ₹500 limit</span><strong>'+threshold+'</strong></div>';
+  const chipExposure = 5000 - Number($('shock-transfer').value);
+  const cloudLoss = 3000*.08;
+  const chipLoss = chipExposure*.05;
+  const {chipName,cloudName}=shockExample;
+  const threshold = chipExposure ? ((500-cloudLoss)/chipExposure*100).toFixed(1)+'%' : 'No '+chipName+' exposure';
+  $('shock-limit-result').innerHTML = '<div><span>'+chipName+' contribution (−5%)</span><strong class="down">−'+fmt(chipLoss)+'</strong></div>'+
+    '<div><span>'+cloudName+' contribution (−8%)</span><strong class="down">−'+fmt(cloudLoss)+'</strong></div>'+
+    '<div><span>Simulated loss</span><strong class="down">−'+fmt(chipLoss+cloudLoss)+'</strong></div>'+
+    '<div><span>'+chipName+' decline at the '+fmt(500)+' limit</span><strong>'+threshold+'</strong></div>';
 }
 $('shock-transfer').addEventListener('change',renderLossLimit);
 renderLossLimit();
@@ -3851,18 +4408,20 @@ function toggleShock(force) {
   const result = $('shock-result');
   result.hidden = !state.shock;
   if (state.shock) {
+    market.shockTick=market.ticks;
     state.isolate = false;
     $('isolate').setAttribute('aria-pressed','false');
-    selectCompany('NOVA',false);
+    selectCompany(shockTrigger,false);
     setFilter('all');
     updateTicker();renderWallet();
+    const {path,chipName,cloudName,fundName}=shockExample;
     const parts = [
-      ['Atlas · direct holding', 4000, 500],
-      ['Atlas · through Innovation ETF',1600,500],
-      ['GridCloud · through Innovation ETF',1200,800]
+      [chipName+' · direct holding', 4000, 500],
+      [chipName+' · through '+fundName,1600,500],
+      [cloudName+' · through '+fundName,1200,800]
     ].map(([label,exposure,basisPoints])=>[label,exposure*basisPoints/10000]);
     const loss = parts.reduce((sum,[,value])=>sum+value,0);
-    result.innerHTML = '<div class="shock-results"><div><p class="path-label"><strong>Nova cuts cloud orders → GridCloud spends less on chips → Atlas sales are exposed</strong></p><p>Scenario assumptions: Atlas chips −5%, GridCloud −8%, other holdings unchanged.</p><ul class="shock-list">' + parts.map(([label,amount])=>'<li><span>'+label+'</span><strong>−'+fmt(amount)+'</strong></li>').join('')+'</ul></div><div><span class="eyebrow">ESTIMATED LOSS</span><div class="loss-total">−'+fmt(loss)+'</div><p class="balance-after">'+fmt(10000-loss)+' remaining ('+(loss/100).toFixed(2)+'% down)</p><p>Orange links trace the shock and fund holdings.</p></div></div>';
+    result.innerHTML = '<div class="shock-results"><div><p class="path-label"><strong>'+path+'</strong></p><p>Scenario assumptions: '+chipName+' −5%, '+cloudName+' −8%, other holdings unchanged.</p><ul class="shock-list">' + parts.map(([label,amount])=>'<li><span>'+label+'</span><strong>−'+fmt(amount)+'</strong></li>').join('')+'</ul></div><div><span class="eyebrow">ESTIMATED LOSS</span><div class="loss-total">−'+fmt(loss)+'</div><p class="balance-after">'+fmt(10000-loss)+' remaining ('+(loss/100).toFixed(2)+'% down)</p><p>Bright blue lines trace the modeled exposure.</p></div></div>';
     $('announcer').textContent = 'Shock applied. Estimated loss ' + fmt(loss) + '.';
   } else {
     renderInspector();
@@ -3911,7 +4470,7 @@ document.addEventListener('click',event => {
     state.zoom = el.id === 'zoom-reset' ? 1 : Math.round(Math.max(1,Math.min(1.60,state.zoom+(el.id==='zoom-in'?.2:-.2)))*10)/10;
     sizeGraph();
     centerNode(state.selected);
-  } else if (el.id === 'run-shock') toggleShock();
+  } else if (el.id === 'run-shock') { toggleShock(); $('portfolio').scrollIntoView({behavior:motion(),block:'nearest'}); }
   else if ('newsShock' in el.dataset) {
     $('article-dialog').close();
     toggleShock(true);
@@ -3920,25 +4479,39 @@ document.addEventListener('click',event => {
 });
 $('evidence-list').innerHTML = research.map(([title,note,url])=>'<a href="'+url+'" target="_blank" rel="noopener noreferrer">'+title+'<small>'+note+'</small></a>').join('');
 const resizer = new ResizeObserver(() => {
+  if(!activeMode || $('network-view').hidden)return;
   sizeGraph();
   positionQuickCard();
   if(state.tab==='performance') renderPerformance(companies.get(state.selected));
 });
 resizer.observe(viewport);
-$('live-mode').setAttribute('aria-current',String(!sampleMode));
-$('sample-mode').setAttribute('aria-current',String(sampleMode));
-$('market-foot').textContent=sampleMode?'SAMPLE MODE · Fictional market data and virtual funds.':'LIVE MODE · Disclosed relationships and market data. All fills use virtual funds.';
-$('evidence-copy').textContent=sampleMode?'Research behind the fictional map and scenarios.':'Dated disclosures show selected company links. Holdings and agreements can change after publication.';
-startDesk();
-startPortfolio();
+setupModeScreen();
+$('market-foot').textContent=legacyMode
+  ?'CLASSIC SIMULATION · Fictional companies, prices and virtual funds.'
+  :replayMode?'REPLAY · Real companies and dated disclosures. Illustrative prices and paper fills.'
+  :'LIVE MARKET · Actual market data. Prices may be delayed. Paper orders only.';
+$('evidence-copy').textContent=legacyMode?'Research behind the fictional map and scenarios.':'Dated disclosures show selected company links. These relationships can change.';
+if(replayMode) {
+  $('scenario-title').textContent=shockExample.title;
+  $('scenario-copy').textContent='Trace a hypothetical AI spending slowdown through a preset $10,000 virtual portfolio.';
+  $('shock-limit-label').textContent='Explore a $500 loss limit';
+  $('shock-limit-copy').textContent='This separate demo starts with $5,000 in NVIDIA, $3,000 in CoreWeave, and $2,000 in virtual cash.';
+  $('shock-transfer-label').textContent='Move NVIDIA exposure to virtual cash';
+  Array.from($('shock-transfer').options).forEach(option=>{option.textContent=fmt(Number(option.value));});
+}
 startInvest();
-activateNav(workspaceFromLocation());
-window.addEventListener('hashchange',() => activateNav(workspaceFromLocation()));
-renderInspector();
-sizeGraph();
-updateTicker();
-renderWallet();
-startMarket();
+if(activeMode) {
+  startDesk();
+  startPortfolio();
+  if(companies.has(symbolFromMode) && hasMarketSymbol(companies.get(symbolFromMode)))desk.chartSymbol=symbolFromMode;
+  activateNav(workspaceFromLocation());
+  window.addEventListener('hashchange',() => activateNav(workspaceFromLocation()));
+  renderInspector();
+  sizeGraph();
+  updateTicker();
+  renderWallet();
+  startMarket();
+}
 viewport.addEventListener('scroll',positionQuickCard,{passive:true});
 window.addEventListener('scroll',positionQuickCard,{passive:true});
 window.addEventListener('resize',positionQuickCard);

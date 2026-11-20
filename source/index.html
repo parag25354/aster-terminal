@@ -6,14 +6,14 @@
 <meta name="theme-color" content="#0a0908">
 <meta name="description" content="Explore company and ETF relationships and trace simulated shocks through a portfolio.">
 <title>Aster Invest · Investing workspace</title>
-<script>try{document.documentElement.dataset.theme=localStorage.getItem('aster:theme')==='light'?'light':'dark'}catch{}</script>
+<script src="theme-init.js"></script>
 <link rel="stylesheet" href="terminal.css">
 <link rel="stylesheet" href="invest.css">
 </head>
-<body data-initial-view="overview" data-simulation-only="true">
+<body data-market-backend="static" data-initial-view="overview" data-mode="choose">
 <header class="topbar">
   <a href="#overview" class="brand" data-home-link><span class="brand-icon" aria-hidden="true">✳</span><span>aster<span class="brand-second"> terminal</span></span></a>
-  <nav aria-label="Workspace" class="workspace-nav">
+  <nav aria-label="Workspace" class="workspace-nav" id="workspace-controls" hidden>
     <button type="button" class="nav" data-nav="overview">Overview</button>
     <button type="button" class="nav" data-nav="markets">Markets</button>
     <button type="button" class="nav" data-nav="watchlist">Watchlist</button>
@@ -22,9 +22,46 @@
     <button type="button" class="nav" data-nav="network">Network</button>
     <button type="button" class="nav" data-nav="trading">Trading</button>
   </nav>
-  <div class="topbar-settings"><button class="theme-toggle" type="button" id="theme-toggle" aria-pressed="false" aria-label="Light mode">☀ Light</button><div class="mode-switch" aria-label="Market mode"><span id="live-mode" hidden></span><span id="sample-mode" class="offline-mode">Simulation</span></div></div>
+  <div class="topbar-settings"><button class="theme-toggle" type="button" id="theme-toggle" aria-pressed="false" aria-label="Light mode">☀ Light</button><a href="?" class="mode-picker-link" id="mode-current" aria-label="Change market mode" title="Change market mode">Choose mode</a></div>
 </header>
-<main id="main" tabindex="-1">
+<main id="session-gate" class="session-gate" aria-labelledby="gate-title">
+  <div class="gate-top">
+    <div class="gate-market" id="gate-session"><span class="session-dot" aria-hidden="true"></span><strong id="gate-session-label">U.S. equities</strong><time id="gate-market-clock"></time></div>
+    <a class="gate-hours" href="https://www.nyse.com/trade/hours-calendars" target="_blank" rel="noopener noreferrer">U.S. market hours</a>
+  </div>
+  <div class="gate-hero">
+    <div class="gate-intro">
+      <h1 id="gate-title">Choose how to<br>open Aster.</h1>
+      <p>Follow relationships between real companies, then see how those connections can affect a portfolio.</p>
+    </div>
+    <div class="gate-network" aria-label="OpenAI buys cloud capacity from CoreWeave, which buys hardware from NVIDIA" role="img">
+      <svg viewBox="0 0 510 220" aria-hidden="true" preserveAspectRatio="none">
+        <path d="M20 113 C95 113 106 60 185 60 S298 158 360 158 S441 112 507 112" class="gate-trace-bg"/>
+        <path d="M20 113 C115 113 113 145 222 145 S311 66 391 66 S454 121 507 121" class="gate-trace-bg"/>
+        <path d="M71 74 C154 74 177 136 260 136 S342 74 433 74" class="gate-trace" pathLength="1"/>
+        <path d="M71 74 C181 74 230 33 302 33 S390 74 433 74" class="gate-trace-edge"/>
+        <path d="M260 136 C292 137 356 196 407 196" class="gate-trace-edge"/>
+        <circle cx="71" cy="74" r="5"/><circle cx="260" cy="136" r="5"/><circle cx="433" cy="74" r="5"/>
+      </svg>
+      <span class="gate-node gate-node-a">OpenAI</span><span class="gate-node gate-node-b">CoreWeave</span><span class="gate-node gate-node-c">NVIDIA</span>
+      <span class="gate-network-tag">COMPANY NETWORK</span>
+    </div>
+  </div>
+  <div class="gate-options" aria-label="Market modes">
+    <article class="gate-card gate-live">
+      <div class="gate-card-top"><span class="gate-card-icon" aria-hidden="true">⌁</span><span class="gate-tag">U.S. MARKETS</span></div>
+      <div><h2>Live Market</h2><p>View actual prices and exchange charts alongside company disclosures. Prices may be delayed depending on the feed.</p></div>
+      <a class="gate-action" href="?mode=live">Open Live Market</a>
+    </article>
+    <article class="gate-card gate-replay">
+      <div class="gate-card-top"><span class="gate-card-icon" aria-hidden="true">▷</span><span class="gate-tag" id="gate-replay-badge">AFTER-HOURS DEMO</span></div>
+      <div><h2>Market Replay</h2><p>Run an illustrative U.S. session with real companies. Step through prices, place paper trades, and trace an AI spending shock.</p></div>
+      <a class="gate-action" href="?mode=replay">Start Market Replay</a>
+    </article>
+  </div>
+  <p class="gate-foot">Paper trading only. Orders use virtual funds.</p>
+</main>
+<main id="main" tabindex="-1" hidden>
   <div class="ticker-strip" id="ticker-strip" aria-label="Market watch"></div>
   <div id="account-metrics" class="account-metrics" aria-label="Paper account summary"></div>
   <div class="statusbar" id="market-status" role="status">Connecting to market data…</div>
@@ -41,6 +78,7 @@
         </header>
         <div class="invest-chart-box"><canvas id="invest-market-chart" aria-label="Market performance chart" role="img"></canvas><p id="invest-chart-empty" hidden></p></div>
         <div id="invest-chart-range" class="invest-chart-range"></div>
+        <div id="overview-exchange-chart" class="exchange-chart" hidden></div>
       </article>
       <article class="invest-card invest-goal-preview" aria-labelledby="invest-plan-title">
         <header class="invest-card-head"><div><p class="invest-kicker">YOUR PLAN</p><h2 id="invest-plan-title">Saving goals</h2></div><button type="button" class="invest-text-button" data-nav="goals">View goals</button></header>
@@ -59,6 +97,7 @@
   </section>
   <section id="invest-markets" class="invest-page" aria-labelledby="invest-markets-title" hidden>
     <header class="invest-page-head"><div><p class="invest-kicker">EXPLORE</p><h1 id="invest-markets-title">Markets</h1><p>Search stocks and funds, compare day moves, and open company research.</p></div></header>
+    <section id="market-exchange-quotes" class="invest-card exchange-quotes-card" aria-label="Market quotes" hidden></section>
     <div class="invest-card invest-table-card">
       <div class="invest-toolbar">
         <label class="invest-search-control"><span class="sr-only">Search markets</span><input id="invest-market-search" type="search" placeholder="Search company or ticker" autocomplete="off"></label>
@@ -128,7 +167,7 @@
         <h1 id="trade-desk-title">Trading workspace</h1>
         <p class="lede">Manage positions, prepare baskets, and review your fills.</p>
       </div>
-      <button id="practice-basket" class="btn secondary" type="button">Load sample basket</button>
+      <div class="desk-mode-controls"><a id="desk-replay-cta" class="btn secondary" href="?mode=replay#trading" hidden>Practice in Replay</a><button id="practice-basket" class="btn secondary" type="button">Load sample basket</button></div>
     </header>
     <div class="desk-layout">
       <section class="desk-watch panel" aria-labelledby="desk-instruments-title">
@@ -166,6 +205,7 @@
             <div id="desk-chart-markers"></div>
             <p id="desk-chart-message"></p>
           </div>
+          <div id="desk-exchange-chart" class="exchange-chart" hidden></div>
           <div id="desk-chart-time" class="desk-chart-time"></div>
           <div id="desk-chart-links" class="desk-chart-links"></div>
         </section>
@@ -225,14 +265,14 @@
   <section class="panel scenario" id="portfolio" aria-labelledby="scenario-title">
     <div class="scenario-head">
       <div class="scenario-icon" aria-hidden="true">↯</div>
-      <div><p class="eyebrow">PORTFOLIO STRESS TEST</p><h2 id="scenario-title">What if Nova cuts cloud spending?</h2><p>You hold zero Nova shares. Trace the shock through a preset ₹10,000 demo portfolio.</p></div>
+      <div><p class="eyebrow">PORTFOLIO STRESS TEST</p><h2 id="scenario-title">What if Nova cuts cloud spending?</h2><p id="scenario-copy">You hold zero Nova shares. Trace the shock through a preset ₹10,000 demo portfolio.</p></div>
       <button id="run-shock" class="btn primary">Run shock</button>
     </div>
     <div id="shock-result" hidden></div>
     <details class="shock-limit" id="shock-limit">
-      <summary>Explore a ₹500 loss limit</summary>
-      <p>This separate demo starts with ₹5,000 in Atlas, ₹3,000 in GridCloud, and ₹2,000 in virtual cash.</p>
-      <label for="shock-transfer">Move Atlas exposure to virtual cash</label>
+      <summary id="shock-limit-label">Explore a ₹500 loss limit</summary>
+      <p id="shock-limit-copy">This separate demo starts with ₹5,000 in Atlas, ₹3,000 in GridCloud, and ₹2,000 in virtual cash.</p>
+      <label id="shock-transfer-label" for="shock-transfer">Move Atlas exposure to virtual cash</label>
       <select id="shock-transfer" class="desk-field"><option value="0">₹0</option><option value="1000">₹1,000</option><option value="2000">₹2,000</option><option value="5000">₹5,000</option></select>
       <output id="shock-limit-result" for="shock-transfer" aria-live="polite"></output>
     </details>
@@ -331,6 +371,9 @@
 <div class="sr-only" id="announcer" aria-live="polite"></div>
 <script defer src="sample-data.js"></script>
 <script defer src="live-data.js"></script>
+<script defer src="replay-data.js"></script>
+<script defer src="mode-ui.js"></script>
+<script defer src="exchange-ui.js"></script>
 <script defer src="paper.js"></script>
 <script defer src="market-ui.js"></script>
 <script defer src="trading-ui.js"></script>

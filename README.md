@@ -1,26 +1,24 @@
 # Aster Terminal
 
-A Code & Capital workshop prototype for finding hidden exposure across companies, suppliers, and ETFs.
+A Code & Capital workshop prototype for exploring real company connections and practicing with virtual money.
 
-## Open the website
+## Open Aster
 
-Unzip the submission and double-click **index.html** in a current desktop or mobile browser. The bundled page works offline without installation, credentials, or a market feed. The default is Dark mode. Use **Light** in the header to switch. The browser saves your choice and your paper account, watchlist, and goals.
+- [Vercel website](https://aster-terminal-iiitd.vercel.app/)
+- [GitHub Pages website](https://parag25354.github.io/aster-terminal/)
 
-## Two-minute judge demo
+The starting screen offers **Live Market** and **Market Replay**. Live Market opens actual U.S. stock charts. Public TradingView stock data is delayed, and the optional Alpaca integration supports real-time market data when authorized credentials are configured on the server. Market Replay uses real companies and source-linked disclosures alongside illustrative prices and virtual trades, so it works even outside regular market hours. The header lets you change mode or theme.
 
-1. **Overview** — Compare benchmark periods. The Market 500 is a fictional, equal-weight index of three sample price paths, starting at 100 for each period.
-2. **Markets** — Search for **ATLS**, toggle its watchlist star, and open its company profile. Use **Chart** to change timeframes, and **News** for potential upside, downside, and mixed headlines.
-3. **Trading and Portfolio** — Place a small paper order, then check the holding and receipt. In Trading, select **GRID**, compare the 1D and 1M news windows, and review a two-leg sample basket.
-4. **Network** — Select Nova Models and run the shock. The preset loses ₹376 even though it holds no Nova shares. Click **Explore a ₹500 loss limit** to try the separate two-stock preset. Move ₹2,000 from Atlas to virtual cash to reduce the modeled loss from ₹490 to ₹390.
-5. **Goals** — Add a goal with a ₹12,000 target, ₹2,000 saved and ₹1,000 per month. Aster shows 10 months to target.
+## Demo flow
 
-## Submission files
+1. Select **Start Market Replay**. Step from 10:30 to 10:32 Eastern and switch the SPY chart timeframe.
+2. In **Network**, search for CoreWeave. Open **Connections** to see NVIDIA as both an investor and a supplier. Blue shades and line patterns distinguish link types.
+3. Open NVIDIA in **Trading** or the chart tab. Place a small virtual order and open **Portfolio** to check the holding and receipt. The demo basket stages NVIDIA and CoreWeave together.
+4. Select **Run shock** in Network. The preset portfolio loses $376 under its assumptions. The separate $500 loss-limit example moves $2,000 from NVIDIA into cash and reduces the modeled loss from $490 to $390.
+5. In **Goals**, add a target and see the savings timeline. Reload to verify the watchlist, portfolio, goals, and theme are stored in this browser.
 
-- **index.html** — Self-contained offline website.
-- **Aster_Project_Report.pdf** — Project report with screenshots, method, and verification.
-- **Aster_Demo.mp4** — Narrated walkthrough of the working site.
-- **source/** — Editable HTML, styles, JavaScript and fonts. The entry file is `source/index.html`.
+## Files
 
-## Simulation
-
-Companies, linked transactions, prices, trigger news, accounts, and fills in this workshop edition are sample data. The shock uses preset weights and percentage changes. Goal estimates hold the monthly contribution constant. Everything is local to your browser. There are no brokerage orders or payments. Research links open their original sources when an internet connection is available.
+- **index.html** — Standalone website. Double-click it and choose Market Replay to demonstrate offline.
+- **source/** — Editable static website with styles and data modules.
+- **Aster_Project_Report.pdf** and **Aster_Demo.mp4** — Original workshop report and recording. To reproduce them, open `index.html?mode=sample` on the website. Classic Simulation retains the fictional issuer names and INR account shown in those materials.

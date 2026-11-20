@@ -1,18 +1,23 @@
 'use strict';
-const sampleMode=document.body.dataset.simulationOnly==='true' || location.protocol==='file:' || new URLSearchParams(location.search).get('mode')!=='live';
-const {groups,companies,links,articles,research}=sampleMode?sampleDataset():liveDataset();
-const homeCompany=sampleMode?'NOVA':'NVDA';
+const {groups,companies,links,articles,research}=replayMode?replayDataset():legacyMode?sampleDataset():liveDataset();
+const symbolFromMode=modeParams.get('symbol')?.toUpperCase();
+const homeCompany=companies.has(symbolFromMode)?symbolFromMode:legacyMode?'NOVA':'NVDA';
+const shockExample=replayMode?replayStress:exampleStress;
 const $ = (id) => document.getElementById(id);
 const stage = $('stage'), viewport = $('graph'), canvas = $('edges'), query = $('search');
-const edgeColors = {funding:'#f1bb71', spend:'#7eb8df', holding:'#bdabfb', partner:'#a5b4c4'};
-const lightEdgeColors = {funding:'#9c5419',spend:'#28738d',holding:'#7153b1',partner:'#607780'};
+const edgeColors = {funding:'#9acbff',spend:'#4c9bff',holding:'#7190ed',partner:'#4877b1'};
+const lightEdgeColors = {funding:'#2454aa',spend:'#0573ae',holding:'#3956b9',partner:'#365e88'};
+const edgePatterns = {funding:[],spend:[7,3],holding:[3,3],partner:[1.5,3.8]};
 const isLightTheme = () => document.documentElement.dataset.theme === 'light';
 const edgeNames = {funding:'equity links', spend:'purchase links', holding:'fund holdings', partner:'partnerships'};
 const impactLabels = {up:'Potential upside',down:'Potential downside',flat:'Mixed or unclear'};
 const periodNames = ['1H','1D','1M','1Y'];
-const pathNodes = new Set(['NOVA','GRID','ATLS','INNO']);
-const paths = new Set(['NOVA/GRID/spend','GRID/ATLS/spend','INNO/ATLS/holding','INNO/GRID/holding']);
-const fmt = (n) => '₹' + n.toLocaleString('en-IN');
+const {trigger:shockTrigger,chip:shockChip,cloud:shockCloud,fund:shockFund}=shockExample;
+const pathNodes = new Set([shockTrigger,shockChip,shockCloud,shockFund]);
+const paths = new Set([shockTrigger+'/'+shockCloud+'/spend',shockCloud+'/'+shockChip+'/spend',
+  shockFund+'/'+shockChip+'/holding',shockFund+'/'+shockCloud+'/holding']);
+const shockMoves = {[shockChip]:-5,[shockCloud]:-8,[shockFund]:-4.4};
+const fmt = (n) => (legacyMode?'₹':'$') + n.toLocaleString(legacyMode?'en-IN':'en-US');
 const signed = (n) => (n >= 0 ? '+' : '−') + Math.abs(n).toFixed(2) + '%';
 const glyph = (id) => id.slice(0,2);
 const state = {selected:homeCompany, filter:'all', isolate:false, zoom:1, tab:'overview', period:'1D', shock:false, results:[], activeResult:-1};
@@ -96,7 +101,7 @@ function paintGraph() {
     const start = positions.get(link.from), end = positions.get(link.to);
     if (!start || !end) continue;
     const emphasis = weight(link);
-    const color = emphasis === 2 ? (isLightTheme()?'#b85c19':'#ffbd73') : (isLightTheme()?lightEdgeColors:edgeColors)[link.type];
+    const color = emphasis === 2 ? (isLightTheme()?'#0c5dcc':'#bee9ff') : (isLightTheme()?lightEdgeColors:edgeColors)[link.type];
     const sameLane = start.x === end.x;
     const dir = end.x >= start.x ? 1 : -1;
     const offset = ((link.id % 5)-2) * 4;
@@ -110,9 +115,9 @@ function paintGraph() {
     const control2 = {x:x2 + span*(sameLane ? 1 : -dir), y:y2 + t + offset};
     if (glow) {
       const braid = ctx.createLinearGradient(x1,y1,x2,y2);
-      braid.addColorStop(0,'#c2782626');
-      braid.addColorStop(.51,emphasis?'#ffb04c7d':'#e4a24c38');
-      braid.addColorStop(1,'#ffd17c2d');
+      braid.addColorStop(0,color+'20');
+      braid.addColorStop(.51,color+(emphasis?'66':'28'));
+      braid.addColorStop(1,color+'29');
       ctx.strokeStyle = braid;
       for (const thread of [-4,4]) {
         ctx.lineWidth=emphasis?1.2:.65;
@@ -122,14 +127,14 @@ function paintGraph() {
         ctx.stroke();
       }
       if(emphasis || link.type==='funding' || link.type==='spend') {
-        pulsePaths.push({x1,y1,x2,y2,control1,control2,emphasis,id:link.id});
+        pulsePaths.push({x1,y1,x2,y2,control1,control2,emphasis,id:link.id,color});
       }
     }
     ctx.strokeStyle = color + (emphasis === 2 ? 'ec' : emphasis === 1 ? 'ce' : (glow?'7c':'58'));
     ctx.lineWidth = emphasis === 2 ? 3 : emphasis === 1 ? 1.72 : .89;
     ctx.shadowBlur = emphasis === 2 ? 11 : emphasis === 1 ? 5 : 0;
     ctx.shadowColor = color;
-    ctx.setLineDash(link.type === 'partner' ? [3,4] : []);
+    ctx.setLineDash(edgePatterns[link.type]);
     ctx.beginPath();
     ctx.moveTo(x1,y1);
     ctx.bezierCurveTo(control1.x,control1.y,control2.x,control2.y,x2,y2);
@@ -153,7 +158,7 @@ function paintGraph() {
 }
 
 function updatePulses() {
-  if(glow && !reducedMotion.matches && !document.hidden && !$('network-view').hidden) {
+  if(activeMode && glow && !reducedMotion.matches && !document.hidden && !$('network-view').hidden) {
     if(!pulseFrame)pulseFrame=requestAnimationFrame(drawPulses);
   } else {
     cancelAnimationFrame(pulseFrame);
@@ -174,7 +179,7 @@ function drawPulses(now) {
     const x=u*u*u*path.x1+3*u*u*t*path.control1.x+3*u*t*t*path.control2.x+t*t*t*path.x2;
     const y=u*u*u*path.y1+3*u*u*t*path.control1.y+3*u*t*t*path.control2.y+t*t*t*path.y2;
     ctx.globalAlpha=Math.sin(t*Math.PI)*(path.emphasis?.92:.64);
-    ctx.fillStyle='#ffd68c';
+    ctx.fillStyle=path.emphasis && !isLightTheme()?'#d8edff':path.color;
     ctx.beginPath();
     ctx.arc(x,y,path.emphasis?2.2:1.35,0,Math.PI*2);
     ctx.fill();
@@ -214,7 +219,7 @@ function centerNode(id) {
 function renderInspector() {
   const c = companies.get(state.selected);
   const news = companyNews(c.id);
-  $('entity').innerHTML = '<div class="entity"><div class="entity-top"><span class="entity-glyph" aria-hidden="true">' + glyph(c.id) + '</span><div><h2 id="entity-title" tabindex="-1">' + c.name + '</h2><small>' + c.id + ' · ' + c.sector + ' · ' + (c.listing === 'Private' ? 'Private' : c.listing === 'Research' ? 'Research entity' : c.listing === 'Fund' ? 'ETF' : sampleMode ? 'Sample listed' : 'US equity') + '</small></div><span class="live-entity-quote" id="entity-quote"></span></div><p>' + c.summary + '</p></div>';
+  $('entity').innerHTML = '<div class="entity"><div class="entity-top"><span class="entity-glyph" aria-hidden="true">' + glyph(c.id) + '</span><div><h2 id="entity-title" tabindex="-1">' + c.name + '</h2><small>' + c.id + ' · ' + c.sector + ' · ' + companyInstrument(c) + '</small></div><span class="live-entity-quote" id="entity-quote"></span></div><p>' + c.summary + '</p></div>';
   $('news-count').textContent = news.length;
   $('detail-tabs').querySelectorAll('[data-tab]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.tab === state.tab)));
   $('detail').scrollTop = 0;
@@ -222,7 +227,7 @@ function renderInspector() {
   if (state.tab === 'connections') renderConnections(c);
   if (state.tab === 'performance') renderPerformance(c);
   if (state.tab === 'trade') renderTicket(c);
-  if (state.tab === 'news') $('detail').innerHTML = '<div class="news-legend"><span class="up">● Upside</span><span class="down">● Downside</span><span class="flat">● Mixed / unclear</span></div>' + (!sampleMode && !market.status?.configured ? '<p class="performance-notice">Showing archived disclosures. Live news requires market credentials.</p>' : !sampleMode && market.news[c.id]?.error ? '<p class="performance-notice">News feed unavailable. Showing the latest known updates.</p>' : '') + (news.length ? news.map(article => headline(article,c.id)).join('') : '<p class="empty">' + (sampleMode?'No sample news for this company.':'No sourced updates available for this entity yet.') + '</p>');
+  if (state.tab === 'news') $('detail').innerHTML = '<div class="news-legend"><span class="up">● Upside</span><span class="down">● Downside</span><span class="flat">● Mixed / unclear</span></div>' + (publicExchange() ? '<p class="performance-notice">Showing dated company disclosures.</p>' : !sampleMode && market.news[c.id]?.error ? '<p class="performance-notice">News feed unavailable. Showing the latest known updates.</p>' : '') + (news.length ? news.map(article => headline(article,c.id)).join('') : '<p class="empty">' + (sampleMode?'No sample news for this company.':'No sourced updates available for this entity yet.') + '</p>');
   $('headlines').innerHTML = state.tab !== 'news' && news.length ? '<div class="headlines"><div class="headline-head"><h3>Latest news</h3><button data-tab="news">All news</button></div>' + headline(news[0],c.id) + '</div>' : '';
   updateEntityQuote();
 }
@@ -262,32 +267,26 @@ function renderSamplePerformance(c) {
     $('detail').innerHTML = '<p class="empty"><strong>Private company</strong><br>Explore its investors and commercial ties in the Connections tab.</p>';
     return;
   }
-  const daily = state.shock && c.id === 'ATLS' ? -5 : state.shock && c.id === 'GRID' ? -8 : state.shock && c.id === 'INNO' ? -4.4 : c.change;
-  const move = daily*[.28,1,2.6,8.5][horizon];
-  const displayPrice = state.shock ? c.price * (1 + (c.id === 'ATLS' ? -.05 : c.id === 'GRID' ? -.08 : c.id === 'INNO' ? -.044 : 0)) : c.price;
+  const daily = state.shock ? (shockMoves[c.id] ?? c.change) : c.change;
+  const tape = sampleTimeline(c,state.period);
+  const move = (tape.at(-1).value/tape[0].value-1)*100;
+  const displayPrice = mark(c).mid;
   const totals = [0,0,0];
   for (const value of scenarioReturns({...c,change:daily},horizon)) totals[value>10 ? 0 : value<-10 ? 2 : 1]++;
   const name = ['up','flat','down'];
   $('detail').innerHTML =
-    '<div class="periods" role="group" aria-label="Performance timeframe">' + periodNames.map(label => '<button data-period="' + label + '" aria-pressed="' + (label === state.period) + '">' + label + '</button>').join('') + '</div><div class="performance-meta"><span class="price-num">' + fmt(displayPrice) + '</span><strong class="' + (move>=0?'up':'down') + '">' + signed(move) + '</strong></div><canvas class="mini-chart" id="stock-chart" role="img" aria-label="' + c.name + ' fictional ' + state.period + ' line chart, ' + signed(move) + '"></canvas><div class="odds"><h3 class="eyebrow">SIMULATED OUTCOMES</h3><div class="odds-bar" aria-hidden="true">' + totals.map(n => '<span style="width:' + n + '%"></span>').join('') + '</div><div class="odds-label">' + totals.map((n,i) => '<span class="' + name[i] + '">' + n + '% ' + name[i] + '</span>').join('') + '</div></div><p class="performance-notice">100 fictional outcomes for ' + state.period + '. Flat is within ±0.1%.</p>' +
+    '<div class="periods" role="group" aria-label="Performance timeframe">' + periodNames.map(label => '<button data-period="' + label + '" aria-pressed="' + (label === state.period) + '">' + label + '</button>').join('') + '</div><div class="performance-meta"><span class="price-num">' + money(displayPrice) + '</span><strong class="' + (move>=0?'up':'down') + '">' + signed(move) + '</strong></div><canvas class="mini-chart" id="stock-chart" role="img" aria-label="' + c.name + ' fictional ' + state.period + ' line chart, ' + signed(move) + '"></canvas><div class="odds"><h3 class="eyebrow">SIMULATED OUTCOMES</h3><div class="odds-bar" aria-hidden="true">' + totals.map(n => '<span style="width:' + n + '%"></span>').join('') + '</div><div class="odds-label">' + totals.map((n,i) => '<span class="' + name[i] + '">' + n + '% ' + name[i] + '</span>').join('') + '</div></div><p class="performance-notice">100 fictional outcomes for ' + state.period + '. Flat is within ±0.1%.</p>' +
     (c.upside ? '<p class="performance-notice"><strong class="up">Upside:</strong> ' + c.upside + '<br><strong class="down">Risk:</strong> ' + c.downside + '</p>' : '');
-  const graph = $('stock-chart');
-  const width = graph.clientWidth, height = graph.clientHeight;
-  const dpr = Math.min(devicePixelRatio || 1,2);
-  graph.width = Math.round(width*dpr);
-  graph.height = Math.round(height*dpr);
-  const ctx = graph.getContext('2d');
-  ctx.scale(dpr,dpr);
-  const draw = randomStream(companySeed(c)+horizon);
-  const values = Array.from({length:25},(_,index) => move*index/24 + Math.sin(Math.PI*index/24)*(draw()-.5)*Math.max(.7,Math.abs(move)*.45));
-  const lo = Math.min(...values)-.12, hi = Math.max(...values)+.12;
-  ctx.strokeStyle = isLightTheme()?'#dce5e9':'#3b2c20';
-  for(let y=18;y<height;y+=22) {ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(width,y);ctx.stroke();}
-  ctx.strokeStyle = move >= 0 ? (isLightTheme()?'#087248':'#7ee0a8') : (isLightTheme()?'#af2944':'#ff8999');
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  values.forEach((value,i) => { const x=6+i*(width-12)/24, y=height-9-(value-lo)/(hi-lo)*(height-18); if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y); });
-  ctx.stroke();
+  const values=tape.map(point=>point.value);
+  const benchmark=replayMode && c.id!=='SPY'?sampleTimeline(companies.get('SPY'),state.period).map(point=>point.value):[];
+  const peer=replayMode?companyHighlights(c).map(link=>companies.get(link.from===c.id?link.to:link.from))
+    .find(company=>hasMarketSymbol(company) && company.id!=='SPY' && company.listing!=='Demo basket'):null;
+  const peerValues=peer?sampleTimeline(peer,state.period).map(point=>point.value):[];
+  const summary=benchmark.length?' · SPY '+signed((benchmark.at(-1)/benchmark[0]-1)*100):'';
+  const peerSummary=peerValues.length?' · '+peer.id+' '+signed((peerValues.at(-1)/peerValues[0]-1)*100):'';
+  $('stock-chart').insertAdjacentHTML('afterend','<div class="chart-legend"><span>Base 100'+summary+
+    '</span>'+(peerSummary?'<span class="chart-peer">'+peerSummary.slice(3)+'</span>':'')+'</div>');
+  drawMarketChart(values,benchmark,peerValues);
 }
 
 function activateNav(name) {
@@ -303,7 +302,6 @@ function activateNav(name) {
   $('portfolio').hidden = !sampleMode || !showWallet;
   switchInvestPage(name);
   if(name==='trading')showTrading();
-  if(name==='portfolio')loadPortfolioDaily();
   updatePulses();
 }
 function openWorkspace(name,scroll=true) {
@@ -386,6 +384,7 @@ query.addEventListener('keydown',(event) => {
 $('search-wrap').addEventListener('focusout',event=>{if(!$('search-wrap').contains(event.relatedTarget)) closeSearch();});
 $('search-results').addEventListener('mousedown',event=>event.preventDefault());
 document.addEventListener('keydown', event => {
+  if(!activeMode)return;
   if(event.key==='Escape' && !$('node-popover').hidden && !document.querySelector('dialog[open]')) {closeQuickCard(true);return;}
   if ((event.key === '/' && !['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName) && !document.querySelector('dialog[open]')) || (event.key.toLowerCase() === 'k' && (event.ctrlKey || event.metaKey) && !document.querySelector('dialog[open]'))) {
     event.preventDefault();
@@ -405,14 +404,15 @@ function setFilter(filter) {
   paintGraph();
 }
 function renderLossLimit() {
-  const atlas = 5000 - Number($('shock-transfer').value);
-  const gridLoss = 3000*.08;
-  const atlasLoss = atlas*.05;
-  const threshold = atlas ? ((500-gridLoss)/atlas*100).toFixed(1)+'%' : 'No Atlas exposure';
-  $('shock-limit-result').innerHTML = '<div><span>Atlas contribution (−5%)</span><strong class="down">−'+fmt(atlasLoss)+'</strong></div>'+
-    '<div><span>GridCloud contribution (−8%)</span><strong class="down">−'+fmt(gridLoss)+'</strong></div>'+
-    '<div><span>Simulated loss</span><strong class="down">−'+fmt(atlasLoss+gridLoss)+'</strong></div>'+
-    '<div><span>Atlas decline at the ₹500 limit</span><strong>'+threshold+'</strong></div>';
+  const chipExposure = 5000 - Number($('shock-transfer').value);
+  const cloudLoss = 3000*.08;
+  const chipLoss = chipExposure*.05;
+  const {chipName,cloudName}=shockExample;
+  const threshold = chipExposure ? ((500-cloudLoss)/chipExposure*100).toFixed(1)+'%' : 'No '+chipName+' exposure';
+  $('shock-limit-result').innerHTML = '<div><span>'+chipName+' contribution (−5%)</span><strong class="down">−'+fmt(chipLoss)+'</strong></div>'+
+    '<div><span>'+cloudName+' contribution (−8%)</span><strong class="down">−'+fmt(cloudLoss)+'</strong></div>'+
+    '<div><span>Simulated loss</span><strong class="down">−'+fmt(chipLoss+cloudLoss)+'</strong></div>'+
+    '<div><span>'+chipName+' decline at the '+fmt(500)+' limit</span><strong>'+threshold+'</strong></div>';
 }
 $('shock-transfer').addEventListener('change',renderLossLimit);
 renderLossLimit();
@@ -423,18 +423,20 @@ function toggleShock(force) {
   const result = $('shock-result');
   result.hidden = !state.shock;
   if (state.shock) {
+    market.shockTick=market.ticks;
     state.isolate = false;
     $('isolate').setAttribute('aria-pressed','false');
-    selectCompany('NOVA',false);
+    selectCompany(shockTrigger,false);
     setFilter('all');
     updateTicker();renderWallet();
+    const {path,chipName,cloudName,fundName}=shockExample;
     const parts = [
-      ['Atlas · direct holding', 4000, 500],
-      ['Atlas · through Innovation ETF',1600,500],
-      ['GridCloud · through Innovation ETF',1200,800]
+      [chipName+' · direct holding', 4000, 500],
+      [chipName+' · through '+fundName,1600,500],
+      [cloudName+' · through '+fundName,1200,800]
     ].map(([label,exposure,basisPoints])=>[label,exposure*basisPoints/10000]);
     const loss = parts.reduce((sum,[,value])=>sum+value,0);
-    result.innerHTML = '<div class="shock-results"><div><p class="path-label"><strong>Nova cuts cloud orders → GridCloud spends less on chips → Atlas sales are exposed</strong></p><p>Scenario assumptions: Atlas chips −5%, GridCloud −8%, other holdings unchanged.</p><ul class="shock-list">' + parts.map(([label,amount])=>'<li><span>'+label+'</span><strong>−'+fmt(amount)+'</strong></li>').join('')+'</ul></div><div><span class="eyebrow">ESTIMATED LOSS</span><div class="loss-total">−'+fmt(loss)+'</div><p class="balance-after">'+fmt(10000-loss)+' remaining ('+(loss/100).toFixed(2)+'% down)</p><p>Orange links trace the shock and fund holdings.</p></div></div>';
+    result.innerHTML = '<div class="shock-results"><div><p class="path-label"><strong>'+path+'</strong></p><p>Scenario assumptions: '+chipName+' −5%, '+cloudName+' −8%, other holdings unchanged.</p><ul class="shock-list">' + parts.map(([label,amount])=>'<li><span>'+label+'</span><strong>−'+fmt(amount)+'</strong></li>').join('')+'</ul></div><div><span class="eyebrow">ESTIMATED LOSS</span><div class="loss-total">−'+fmt(loss)+'</div><p class="balance-after">'+fmt(10000-loss)+' remaining ('+(loss/100).toFixed(2)+'% down)</p><p>Bright blue lines trace the modeled exposure.</p></div></div>';
     $('announcer').textContent = 'Shock applied. Estimated loss ' + fmt(loss) + '.';
   } else {
     renderInspector();
@@ -483,7 +485,7 @@ document.addEventListener('click',event => {
     state.zoom = el.id === 'zoom-reset' ? 1 : Math.round(Math.max(1,Math.min(1.60,state.zoom+(el.id==='zoom-in'?.2:-.2)))*10)/10;
     sizeGraph();
     centerNode(state.selected);
-  } else if (el.id === 'run-shock') toggleShock();
+  } else if (el.id === 'run-shock') { toggleShock(); $('portfolio').scrollIntoView({behavior:motion(),block:'nearest'}); }
   else if ('newsShock' in el.dataset) {
     $('article-dialog').close();
     toggleShock(true);
@@ -492,25 +494,39 @@ document.addEventListener('click',event => {
 });
 $('evidence-list').innerHTML = research.map(([title,note,url])=>'<a href="'+url+'" target="_blank" rel="noopener noreferrer">'+title+'<small>'+note+'</small></a>').join('');
 const resizer = new ResizeObserver(() => {
+  if(!activeMode || $('network-view').hidden)return;
   sizeGraph();
   positionQuickCard();
   if(state.tab==='performance') renderPerformance(companies.get(state.selected));
 });
 resizer.observe(viewport);
-$('live-mode').setAttribute('aria-current',String(!sampleMode));
-$('sample-mode').setAttribute('aria-current',String(sampleMode));
-$('market-foot').textContent=sampleMode?'SAMPLE MODE · Fictional market data and virtual funds.':'LIVE MODE · Disclosed relationships and market data. All fills use virtual funds.';
-$('evidence-copy').textContent=sampleMode?'Research behind the fictional map and scenarios.':'Dated disclosures show selected company links. Holdings and agreements can change after publication.';
-startDesk();
-startPortfolio();
+setupModeScreen();
+$('market-foot').textContent=legacyMode
+  ?'CLASSIC SIMULATION · Fictional companies, prices and virtual funds.'
+  :replayMode?'REPLAY · Real companies and dated disclosures. Illustrative prices and paper fills.'
+  :'LIVE MARKET · Actual market data. Prices may be delayed. Paper orders only.';
+$('evidence-copy').textContent=legacyMode?'Research behind the fictional map and scenarios.':'Dated disclosures show selected company links. These relationships can change.';
+if(replayMode) {
+  $('scenario-title').textContent=shockExample.title;
+  $('scenario-copy').textContent='Trace a hypothetical AI spending slowdown through a preset $10,000 virtual portfolio.';
+  $('shock-limit-label').textContent='Explore a $500 loss limit';
+  $('shock-limit-copy').textContent='This separate demo starts with $5,000 in NVIDIA, $3,000 in CoreWeave, and $2,000 in virtual cash.';
+  $('shock-transfer-label').textContent='Move NVIDIA exposure to virtual cash';
+  Array.from($('shock-transfer').options).forEach(option=>{option.textContent=fmt(Number(option.value));});
+}
 startInvest();
-activateNav(workspaceFromLocation());
-window.addEventListener('hashchange',() => activateNav(workspaceFromLocation()));
-renderInspector();
-sizeGraph();
-updateTicker();
-renderWallet();
-startMarket();
+if(activeMode) {
+  startDesk();
+  startPortfolio();
+  if(companies.has(symbolFromMode) && hasMarketSymbol(companies.get(symbolFromMode)))desk.chartSymbol=symbolFromMode;
+  activateNav(workspaceFromLocation());
+  window.addEventListener('hashchange',() => activateNav(workspaceFromLocation()));
+  renderInspector();
+  sizeGraph();
+  updateTicker();
+  renderWallet();
+  startMarket();
+}
 viewport.addEventListener('scroll',positionQuickCard,{passive:true});
 window.addEventListener('scroll',positionQuickCard,{passive:true});
 window.addEventListener('resize',positionQuickCard);

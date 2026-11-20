@@ -5,16 +5,16 @@ const market = {
   newsJobs:new Map(), historyJobs:new Map(), ticks:0, replay:null, stream:null, liveTransport:'snapshot'
 };
 const safeText = value => String(value ?? '').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[ch]);
-const stateKey = name => 'aster:' + (sampleMode?'sample':'live') + ':' + name + ':v1';
-const currency = () => sampleMode?'INR':'USD';
-const money = amount => new Intl.NumberFormat(sampleMode?'en-IN':'en-US',{currency:currency(),style:'currency',minimumFractionDigits:2,maximumFractionDigits:2}).format(amount);
+const stateKey = name => 'aster:' + activeMode + ':' + name + ':v1';
+const currency = () => legacyMode?'INR':'USD';
+const money = amount => new Intl.NumberFormat(legacyMode?'en-IN':'en-US',{currency:currency(),style:'currency',minimumFractionDigits:2,maximumFractionDigits:2}).format(amount);
 const tone = value => value > 0 ? (value>=3?'up intense':'up') : value < 0 ? (value<=-3?'down intense':'down') : 'flat';
 const timeLabel = value => {
   const date = new Date(value);
   return Number.isFinite(date.getTime()) ? date.toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short'}) : String(value);
 };
-const feedLabel = value => ({iex:'Real-time IEX · single venue',sip:'Real-time SIP · US consolidated',delayed_sip:'Delayed SIP · view only',sample:'Sample replay'})[value] ?? 'Market feed';
-const virtualAccount = () => sampleMode?'Sample wallet':'Live-mode paper wallet';
+const feedLabel = value => ({iex:'Real-time IEX · single venue',sip:'Real-time SIP · US consolidated',delayed_sip:'Delayed SIP · view only',sample:'Sample replay',replay:'Simulated session'})[value] ?? 'Market feed';
+const virtualAccount = () => replayMode?'Replay wallet':legacyMode?'Sample wallet':'Live-mode paper wallet';
 
 async function requestMarket(op,symbol) {
   const p=new URLSearchParams({op});
@@ -25,21 +25,34 @@ async function requestMarket(op,symbol) {
   return data;
 }
 
+const tapeTime = (tick=market.ticks) => replayStart+tick*replayStep;
+
+function replayPrice(c,tick) {
+  const progress=Math.max(-1,tick/30);
+  const phase=c.index*.94+c.group*.72;
+  const wave=(Math.sin(tick*.18+phase)-Math.sin(phase))*.0035;
+  const drift=progress<0 ? (c.change/100)*progress*.72 : .004*Math.tanh(progress/3)*Math.sin(phase+.5);
+  const shock=state.shock && tick>=market.shockTick ? shockMoves[c.id] ?? 0 : 0;
+  return c.price*(1+wave+drift)*(1+shock/100);
+}
+
 function mark(c) {
+  if(!c)return null;
   if(sampleMode) {
     if(c.price===undefined)return null;
-    const replay=c.price * Math.sin(market.ticks*.39+c.index+c.group) * .004 * (market.ticks ? 1 : 0);
-    const factor=state.shock ? ({ATLS:.95,GRID:.92,INNO:.956}[c.id] ?? 1) : 1;
-    const mid=(c.price+replay)*factor;
+    const wiggle=c.price * Math.sin(market.ticks*.39+c.index+c.group) * .004 * (market.ticks ? 1 : 0);
+    const shock=state.shock ? shockMoves[c.id] ?? 0 : 0;
+    const mid=replayMode?replayPrice(c,market.ticks):(c.price+wiggle)*(1+shock/100);
     const spread=Math.max(.01,mid*.0008);
-    return {bid:Math.max(.01,paper.cents(mid-spread)/100),ask:paper.cents(mid+spread)/100,mid,recent:true,tradable:true,at:new Date().toISOString(),feed:'sample'};
+    return {bid:Math.max(.01,paper.cents(mid-spread)/100),ask:paper.cents(mid+spread)/100,mid,recent:true,tradable:true,
+      at:new Date(replayMode?tapeTime():Date.now()).toISOString(),feed:replayMode?'replay':'sample'};
   }
   const quote = c.symbol && market.quotes[c.symbol];
   if(!quote || !(quote.bid>0) || !(quote.ask>=quote.bid))return null;
   const elapsed=performance.now()-market.received;
   const age=Date.parse(market.observedAt)-Date.parse(quote.at)+elapsed;
   const recent=quote.recent && age <= (market.status?.quoteAgeLimitMs ?? 45_000) && !market.quoteError;
-  return {...quote,mid:(quote.ask+quote.bid)/2,recent,tradable:quote.tradable && recent,feed:market.status.feed};
+  return {...quote,mid:(quote.ask+quote.bid)/2,recent,tradable:quote.tradable && recent && regularSession().open,feed:market.status.feed};
 }
 
 function sampleDayMove(company,quote=mark(company)) {
@@ -52,22 +65,44 @@ function renderStatus() {
   const el=$('market-status');
   if(sampleMode) {
     el.dataset.state='sample';
-    el.innerHTML='<span><strong>Sample session</strong> · Offline prices · Virtual funds</span><span class="replay-actions"><button data-replay="toggle">'+(market.replay?'Pause replay':'Play replay')+'</button><button data-replay="step">Step</button><span>Tick '+market.ticks+'</span></span>';
+    if(!$('replay-toggle')) {
+      el.innerHTML='<span><strong>'+(replayMode?'Market Replay':'Sample session')+'</strong> · '+
+        (replayMode?'Illustrative quotes · Virtual USD':'Offline prices · Virtual funds')+'</span>'+
+        '<span class="replay-actions"><button type="button" id="replay-toggle" data-replay="toggle">Play replay</button>'+
+        '<button type="button" id="replay-step" data-replay="step">Step</button>'+
+        (replayMode?'<button type="button" data-replay="restart">Restart</button>':'')+
+        '<span id="replay-clock"></span></span>';
+    }
+    $('replay-toggle').textContent=market.replay?'Pause replay':'Play replay';
+    const ended=replayMode && market.ticks>=lastReplayTick;
+    $('replay-toggle').disabled=ended;
+    $('replay-step').disabled=ended;
+    $('replay-clock').textContent=replayMode?regularSession(tapeTime()).time+(ended?' · Replay closed':''):'Tick '+market.ticks;
     return;
   }
-  if(!market.status?.configured || market.quoteError) {
+  const session=regularSession();
+  if(publicExchange()) {
+    el.dataset.state='public';
+    el.innerHTML='<span><strong>'+session.state+'</strong> · '+session.time+' · TradingView delayed quotes · Read-only</span>'+
+      '<a class="replay-link" href="'+modeLink('replay',{page:'trading',symbol:state.selected})+'">Practice in Replay</a>';
+    return;
+  }
+  if(market.quoteError) {
     el.dataset.state='unavailable';
-    el.textContent=market.quoteError || 'Live feed setup required. Add Alpaca credentials to enable quotes, charts and current news. Simulation works offline.';
+    el.textContent=market.quoteError;
     return;
   }
   const quotes=Object.values(market.quotes);
-  const anyRecent=quotes.some(q=>q.recent) && performance.now()-market.received<25_000;
-  el.dataset.state=anyRecent && market.status.feed!=='delayed_sip'?'live':'';
-  el.textContent=feedLabel(market.status.feed) + ' · ' + (quotes.length?'Quotes checked at '+timeLabel(market.observedAt):'No quotes returned') + ' · '+(market.liveTransport==='stream'?'Streaming quotes':'Snapshots every 10 seconds')+' · Virtual funds only';
+  const anyRecent=quotes.some(q=>q.recent && Date.now()-Date.parse(q.at)<=market.status.quoteAgeLimitMs);
+  const realtime=anyRecent && session.open && market.status.feed!=='delayed_sip';
+  const latest=quotes.reduce((latest,q)=>Math.max(latest,Date.parse(q.at)||0),0);
+  el.dataset.state=realtime?'live':'closed';
+  el.textContent=session.state+' · '+feedLabel(market.status.feed)+(latest?' · Last quote '+timeLabel(latest):' · Waiting for quotes')+
+    (realtime?(market.liveTransport==='stream'?' · Streaming':' · Refreshing every 10 seconds'):'')+' · Paper trading only';
 }
 
 function readWatch() {
-  const defaults=sampleMode?['ATLS','GRID','INNO','LUMN']:['NVDA','CRWV','SPY','MSFT','ANT'];
+  const defaults=legacyMode?['ATLS','GRID','INNO','LUMN']:['NVDA','CRWV','SPY','MSFT','ANT'];
   try {
     const list=JSON.parse(localStorage.getItem(stateKey('watch')));
     return Array.isArray(list)?list.filter(id=>companies.has(id)):defaults;
@@ -78,7 +113,7 @@ function updateTicker() {
   const list=readWatch();
   $('ticker-strip').innerHTML='<span class="ticker-title">WATCHLIST</span>'+(list.length?list.map(id=>{
     const c=companies.get(id),quote=mark(c);
-    const movement=sampleDayMove(c,quote);
+    const movement=investMove(c,quote);
     const change=movement===null?'':'<span class="'+tone(movement)+'">'+signed(movement)+'</span>';
     return '<button class="quote-tile" aria-pressed="'+(state.selected===id)+'" data-company="'+id+'" aria-label="Open '+c.name+'"><strong>'+id+'</strong><small>'+(quote?money(quote.mid):'—')+'</small>'+change+'</button>';
   }).join(''):'<span class="empty">Use a company’s detail card to add it.</span>');
@@ -107,6 +142,7 @@ function reprice() {
   updateEntityQuote();
   renderWallet();
   refreshDesk();
+  mountQuotesBoard();
   evaluateAlerts();
   if(state.tab==='trade')updateTicket();
 }
@@ -132,7 +168,11 @@ function acceptQuotes(result) {
   if (!market.status || result.feed!==market.status.feed || !Number.isFinite(Date.parse(result.observedAt)) || !result.quotes) return;
   for (const [symbol,quote] of Object.entries(result.quotes)) {
     const prior=market.quotes[symbol];
-    if(!prior || Date.parse(quote.at)>=Date.parse(prior.at)) market.quotes[symbol]=quote;
+    if(!prior || Date.parse(quote.at)>=Date.parse(prior.at)) {
+      market.quotes[symbol]={...quote,previousClose:quote.previousClose ?? prior?.previousClose};
+    } else if (quote.previousClose!=null) {
+      market.quotes[symbol]={...prior,previousClose:quote.previousClose};
+    }
   }
   if (!market.observedAt || Date.parse(result.observedAt)>=Date.parse(market.observedAt)) {
     market.observedAt=result.observedAt;
@@ -167,11 +207,24 @@ function connectQuoteStream() {
   },{once:true});
 }
 
-function nextSampleTick() {
-  market.ticks++;
+function updateReplayViews() {
   reprice();
   if(state.tab==='performance')renderPerformance(companies.get(state.selected));
   if(!$('trade-desk').hidden)loadDeskChart();
+  if($('research-dialog').open && researchPanel.tab==='chart') {
+    updateReplayResearchChart();
+  }
+}
+
+function pauseReplay() {
+  if(market.replay)clearInterval(market.replay);
+  market.replay=null;
+}
+
+function nextSampleTick() {
+  market.ticks++;
+  if(replayMode && market.ticks>=lastReplayTick)pauseReplay();
+  updateReplayViews();
 }
 
 async function startMarket() {
@@ -179,41 +232,46 @@ async function startMarket() {
     renderStatus();
     document.addEventListener('click',event=>{
       const replay=event.target.closest('[data-replay]')?.dataset.replay;
-      if(replay==='step')nextSampleTick();
+      if(replay==='step' && (!replayMode || market.ticks<lastReplayTick))nextSampleTick();
       if(replay==='toggle') {
-        if(market.replay){clearInterval(market.replay);market.replay=null;}
+        if(market.replay)pauseReplay();
         else market.replay=setInterval(nextSampleTick,1750);
         renderStatus();
+      }
+      if(replay==='restart') {
+        pauseReplay();
+        market.ticks=0;
+        if(state.shock)toggleShock(false);
+        updateReplayViews();
       }
     });
     return;
   }
+  renderStatus();
+  setInterval(()=>{if(!document.hidden)renderStatus();},30_000);
+  if(!marketBackend)return;
   try {
     market.status=await requestMarket('status');
-    renderStatus();
-    updateEntityQuote();
-    if(market.status.configured) {
-      connectQuoteStream();
-      await refreshQuotes();
-      selectMarketEntity();
-      if(!$('trade-desk').hidden)loadDeskChart();
-      setInterval(()=>{if(!document.hidden)refreshQuotes();},10_000);
-      setInterval(()=>{
-        if(document.hidden)return;
-        if($('trade-desk').hidden)loadNews(companies.get(state.selected));
-        else loadDeskChart();
-      },60_000);
-    }
-  } catch(error) {
-    market.quoteError=error.message;
-    renderStatus();
+    if(!market.status.configured)return;
+    connectQuoteStream();
+    await refreshQuotes();
+    selectMarketEntity();
+    if(!$('trade-desk').hidden)loadDeskChart();
+    setInterval(()=>{if(!document.hidden)refreshQuotes();},10_000);
+    setInterval(()=>{
+      if(document.hidden)return;
+      if($('trade-desk').hidden)loadNews(companies.get(state.selected));
+      else loadDeskChart();
+    },60_000);
+  } catch {
+    // The delayed embedded charts remain available if the optional backend is unreachable.
   }
 }
 
 function companyNews(id) {
   const seeded=articles.filter(article=>article.impacts[id]);
-  if(sampleMode)return seeded;
-  const wire=market.news[id]?.articles ?? [];
+  if(legacyMode)return seeded;
+  const wire=sampleMode?[]:market.news[id]?.articles ?? [];
   return [...wire,...seeded].sort((a,b)=>Date.parse(b.time)-Date.parse(a.time));
 }
 
@@ -248,7 +306,7 @@ async function loadNews(c) {
 
 function headline(article,id) {
   const impact=article.impacts[id][0];
-  const stamp=sampleMode?article.time:timeLabel(article.time);
+  const stamp=legacyMode?article.time:timeLabel(article.time);
   return '<button class="news-row ' + impact + '" data-article="' + safeText(article.id) + '">' + safeText(article.title) + '<span class="news-meta">' + impactLabels[impact] + ' · ' + safeText(article.source?article.source+' · '+stamp:stamp) + '</span></button>';
 }
 
@@ -256,10 +314,10 @@ function showArticle(id, context=state.selected) {
   const article=companyNews(context).find(a=>a.id===id) ?? articles.find(a=>a.id===id);
   if(!article)return;
   const entries=Object.entries(article.impacts).sort(([a],[b])=>(b===context)-(a===context));
-  const stamp=sampleMode?article.time+' · Sample market session':timeLabel(article.time)+' · '+article.source;
-  $('article').innerHTML='<p class="eyebrow">'+(sampleMode?'SAMPLE NEWS':article.wire?'MARKET HEADLINE':'DATED DISCLOSURE')+' · '+safeText(article.topic)+'</p><h2 id="article-title">'+safeText(article.title)+'</h2><p class="dialog-copy">'+safeText(stamp)+'</p><p class="dialog-copy">'+safeText(article.body)+'</p><div class="impacts">'+entries.map(([symbol,[effect,reason]])=>'<div class="impact-row"><span class="impact-tag '+effect+'">'+impactLabels[effect]+'</span><strong>'+safeText(companies.get(symbol).name)+'</strong><p>'+safeText(reason)+'</p></div>').join('')+'</div>' +
+  const stamp=legacyMode?article.time+' · Sample market session':timeLabel(article.time)+' · '+article.source;
+  $('article').innerHTML='<p class="eyebrow">'+(legacyMode?'SAMPLE NEWS':article.scenario?'REPLAY SCENARIO':article.wire?'MARKET HEADLINE':'DATED DISCLOSURE')+' · '+safeText(article.topic)+'</p><h2 id="article-title">'+safeText(article.title)+'</h2><p class="dialog-copy">'+safeText(stamp)+'</p><p class="dialog-copy">'+safeText(article.body)+'</p><div class="impacts">'+entries.map(([symbol,[effect,reason]])=>'<div class="impact-row"><span class="impact-tag '+effect+'">'+impactLabels[effect]+'</span><strong>'+safeText(companies.get(symbol).name)+'</strong><p>'+safeText(reason)+'</p></div>').join('')+'</div>' +
     (article.url?'<p class="dialog-copy"><a href="'+safeText(article.url)+'" target="_blank" rel="noopener noreferrer">Read original source</a></p>':'')+
-    (sampleMode && id==='nova-reduction'?'<p class="dialog-copy"><button class="btn primary" data-news-shock>Trace this shock</button></p>':'');
+    (sampleMode && id===shockExample.story?'<p class="dialog-copy"><button class="btn primary" data-news-shock>Trace this shock</button></p>':'');
   closeQuickCard();
   $('article-dialog').showModal();
 }
@@ -292,8 +350,13 @@ function renderPerformance(c) {
   if(sampleMode){renderSamplePerformance(c);return;}
   const generation=++historyRenderId;
   const period=state.period;
-  if(!c.symbol || !market.status?.configured) {
-    $('detail').innerHTML=periodButtons()+'<p class="empty">'+(c.symbol?'Configure market data to load actual price history.':'No exchange quote available for this entity.')+'</p>';
+  if(!c.symbol) {
+    $('detail').innerHTML='<p class="empty">No exchange quote available for this entity. View its disclosed connections instead.</p>';
+    return;
+  }
+  if(publicExchange()) {
+    $('detail').innerHTML='<p class="profile-note">See the exchange chart in company research.</p>'+
+      '<button type="button" class="btn secondary" data-open-research="'+c.id+'" data-research-open-tab="chart">Open market chart</button>';
     return;
   }
   const project=period==='1H'||period==='1D'?'intraday':'daily';
@@ -348,13 +411,14 @@ function renderRealChart(c,period,series,benchmark,statsDaily,q) {
     (selected.length?'<p class="performance-notice">Latest completed bar: '+safeText(timeLabel(selected.at(-1).at))+'</p>':'')+history;
   if(points.length>=2)drawMarketChart(points,benchmarkPoints);
 }
-function drawMarketChart(points,broad) {
+function drawMarketChart(points,broad,peer=[]) {
   const canvas=$('stock-chart');
   const width=canvas.clientWidth,height=canvas.clientHeight,dpr=Math.min(devicePixelRatio||1,2);
   canvas.width=width*dpr;canvas.height=height*dpr;
   const ctx=canvas.getContext('2d');ctx.scale(dpr,dpr);
-  const a=points.map(p=>p/points[0]*100), b=broad.map(p=>p/broad[0]*100);
-  const lo=Math.min(...a,...b)-.05,hi=Math.max(...a,...b)+.05;
+  const rebased=series=>series.map(value=>value/series[0]*100);
+  const a=rebased(points), b=rebased(broad), related=rebased(peer);
+  const lo=Math.min(...a,...b,...related)-.05,hi=Math.max(...a,...b,...related)+.05;
   ctx.strokeStyle=isLightTheme()?'#dce5e9':'#363640';
   for(let y=18;y<height;y+=22){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(width,y);ctx.stroke();}
   function draw(series,color) {
@@ -365,7 +429,8 @@ function drawMarketChart(points,broad) {
     });
     ctx.stroke();
   }
-  if(b.length)draw(b,isLightTheme()?'#6550a0':'#bdabfb');
+  if(b.length>1)draw(b,isLightTheme()?'#6550a0':'#bdabfb');
+  if(related.length>1)draw(related,isLightTheme()?'#2468a2':'#8dc6ff');
   draw(a,a.at(-1)<100?(isLightTheme()?'#af2944':'#ff8999'):a.at(-1)>100?(isLightTheme()?'#087248':'#7ee0a8'):(isLightTheme()?'#536774':'#a4a4b6'));
 }
 
@@ -373,8 +438,12 @@ function readWallet(key=paperAccountKey()) { return paper.decode(localStorage.ge
 function renderWallet() { renderPortfolio(); refreshInvest(); }
 
 function renderTicket(c) {
-  if(sampleMode?c.price===undefined:!c.symbol) {
+  if(!hasMarketSymbol(c)) {
     $('detail').innerHTML='<p class="empty">This node has no tradable quote. Select a listed company or fund.</p>';
+    return;
+  }
+  if(publicExchange()) {
+    $('detail').innerHTML='<p class="profile-note">Delayed exchange data is view-only. Use the replay session for paper fills.</p>'+replayAnchorLink(c.id);
     return;
   }
   $('detail').innerHTML='<form id="ticket" class="ticket"><p class="ticket-label">Paper market order · '+c.id+'</p><div class="trade-quote" id="trade-quote"></div><label>Side <select id="order-side"><option value="buy">Buy</option><option value="sell">Sell</option></select></label><label>Shares <input id="order-qty" type="number" value="1" min="1" max="100000" step="1" inputmode="numeric" required></label><p class="ticket-preview" id="ticket-preview"></p><button class="btn primary" id="place-order" type="submit">Place paper order</button><p class="ticket-status" id="ticket-status" aria-live="polite"></p></form>';
@@ -392,7 +461,7 @@ function updateTicket() {
   const amount=q && Number.isSafeInteger(qty) && qty>0 ? qty*paper.cents(side==='buy'?q.ask:q.bid) : null;
   $('ticket-preview').textContent=amount===null?'Order total —':(side==='buy'?'Estimated debit ':'Estimated credit ')+money(amount/100)+' · '+(q.recent?'current quote':'last available quote');
   btn.disabled=form.dataset.pending==='true' || !q?.tradable || amount===null;
-  if(status.dataset.result!=='true')status.textContent=q?.tradable?'Simulated fill at bid or ask. No depth or fees.':sampleMode?'Choose a tradable sample.':'A fresh regular-session quote from the real-time feed is required.';
+  if(status.dataset.result!=='true')status.textContent=q?.tradable?'Simulated fill at bid or ask. No depth or fees.':sampleMode?'Choose a tradable instrument.':'A fresh regular-session quote from the real-time feed is required.';
 }
 
 async function placeOrder(event) {
@@ -476,14 +545,15 @@ function hasMarketSymbol(c) {
 
 function companyInstrument(c) {
   if(c.listing==='Fund') return 'Exchange-traded fund';
+  if(c.listing==='Demo basket') return 'Demo basket';
   if(c.listing==='Private') return 'Private company';
   if(c.listing==='Research') return 'Research entity';
-  return sampleMode ? 'Sample listed stock' : 'US equity';
+  return legacyMode ? 'Sample listed stock' : 'US equity';
 }
 
 function pricePlaceholder(c) {
   if(!hasMarketSymbol(c))return 'No exchange quote';
-  if(!sampleMode && !market.status?.configured)return 'Feed setup required';
+  if(publicExchange())return 'See exchange chart';
   return 'Quote unavailable';
 }
 
@@ -492,9 +562,9 @@ function renderCompanyOverview(c) {
   try { position = readWallet().positions[c.id] ?? null; } catch {}
   const links = companyHighlights(c);
   const news = companyNews(c.id);
-  const note = sampleMode
+  const note = legacyMode
     ? (c.downside ? '<p><strong>Growth driver:</strong> '+safeText(c.upside)+'.</p><p class="profile-note"><strong>What to watch:</strong> '+safeText(c.downside)+'.</p>' : '<p>Follow the investors and suppliers below to see how changes at this entity could reach the demo portfolio.</p>')
-    : '<p>'+safeText(liveProfileNotes[c.id])+'</p>';
+    : '<p>'+safeText(liveProfileNotes[c.id] ?? c.summary)+'</p>';
 
   $('detail').innerHTML =
     '<section class="profile-section"><h3>Market snapshot</h3><dl class="profile-facts">'+

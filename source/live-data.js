@@ -15,7 +15,7 @@ const liveGroups = [
     ['GOOGL','Alphabet','Google Cloud','Listed','Operates Google Cloud and Gemini. Google LLC entered a disclosed investment agreement with Anthropic.','GOOGL']
   ]],
   ['AI labs', [
-    ['OPENAI','OpenAI','Foundation models','Research','Develops foundation models and has disclosed relationships with multiple infrastructure providers.'],
+    ['OPENAI','OpenAI','Foundation models','Private','Develops foundation models and has disclosed relationships with multiple infrastructure providers.'],
     ['ANT','Anthropic','Foundation models','Listed','Develops Claude models. Its IPO announcement identified ANT as the Nasdaq ticker.','ANT'],
     ['META','Meta Platforms','AI research','Listed','Develops AI models and operates the Meta AI product family.','META']
   ]]
@@ -75,7 +75,8 @@ const liveResearch = [
   ['Disclosed NVIDIA supplier relationship','CoreWeave proxy statement, 2025 supplier purchases.',liveSources.nvidiaSupply],
   ['ETF disclosures','State Street issuer fact sheet, March 2026 snapshot. Holdings can change.',liveSources.spy],
   ['AI financing and spillovers','IMF Global Financial Stability Report, October 2026.','https://www.imf.org/-/media/files/publications/gfsr/2026/october/english/ch1.pdf'],
-  ['Market data methods','Alpaca latest quotes and feed definitions.','https://docs.alpaca.markets/us/reference/stocklatestquotes-1']
+  ['Market data methods','Alpaca feed coverage and real-time entitlements.','https://docs.alpaca.markets/us/docs/about-market-data-api'],
+  ['Public exchange charts','TradingView lists the delay and data provider by exchange.','https://www.tradingview.com/widget-docs/markets/north-america/']
 ];
 
 function liveDataset() {
