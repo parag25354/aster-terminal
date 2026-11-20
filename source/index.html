@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0a0908">
+<meta name="description" content="Explore company and ETF relationships and trace simulated shocks through a portfolio.">
+<title>Aster Invest · Investing workspace</title>
+<script>try{document.documentElement.dataset.theme=localStorage.getItem('aster:theme')==='light'?'light':'dark'}catch{}</script>
+<link rel="stylesheet" href="terminal.css">
+<link rel="stylesheet" href="invest.css">
+</head>
+<body data-initial-view="overview" data-simulation-only="true">
+<header class="topbar">
+  <a href="#overview" class="brand" data-home-link><span class="brand-icon" aria-hidden="true">✳</span><span>aster<span class="brand-second"> terminal</span></span></a>
+  <nav aria-label="Workspace" class="workspace-nav">
+    <button type="button" class="nav" data-nav="overview">Overview</button>
+    <button type="button" class="nav" data-nav="markets">Markets</button>
+    <button type="button" class="nav" data-nav="watchlist">Watchlist</button>
+    <button type="button" class="nav" data-nav="portfolio">Portfolio</button>
+    <button type="button" class="nav" data-nav="goals">Goals</button>
+    <button type="button" class="nav" data-nav="network">Network</button>
+    <button type="button" class="nav" data-nav="trading">Trading</button>
+  </nav>
+  <div class="topbar-settings"><button class="theme-toggle" type="button" id="theme-toggle" aria-pressed="false" aria-label="Light mode">☀ Light</button><div class="mode-switch" aria-label="Market mode"><span id="live-mode" hidden></span><span id="sample-mode" class="offline-mode">Simulation</span></div></div>
+</header>
+<main id="main" tabindex="-1">
+  <div class="ticker-strip" id="ticker-strip" aria-label="Market watch"></div>
+  <div id="account-metrics" class="account-metrics" aria-label="Paper account summary"></div>
+  <div class="statusbar" id="market-status" role="status">Connecting to market data…</div>
+  <section id="invest-overview" class="invest-page" aria-labelledby="invest-overview-title" hidden>
+    <header class="invest-page-head">
+      <div><p class="invest-kicker">ASTER INVEST</p><h1 id="invest-overview-title">Investing overview</h1><p>Explore the market, practise trades, and track what you’re saving for.</p></div>
+      <button class="invest-button primary" type="button" data-nav="markets">Explore markets <span aria-hidden="true">↗</span></button>
+    </header>
+    <div class="invest-hero">
+      <article class="invest-card invest-market-card" aria-labelledby="invest-chart-title">
+        <header class="invest-card-head">
+          <div><p class="invest-kicker" id="invest-index-label">MARKET SNAPSHOT</p><h2 id="invest-chart-title">Market 500</h2><div class="invest-index-value"><strong id="invest-index-value"></strong><span id="invest-index-change"></span></div></div>
+          <div id="invest-periods" class="invest-pills" aria-label="Overview chart timeframe"></div>
+        </header>
+        <div class="invest-chart-box"><canvas id="invest-market-chart" aria-label="Market performance chart" role="img"></canvas><p id="invest-chart-empty" hidden></p></div>
+        <div id="invest-chart-range" class="invest-chart-range"></div>
+      </article>
+      <article class="invest-card invest-goal-preview" aria-labelledby="invest-plan-title">
+        <header class="invest-card-head"><div><p class="invest-kicker">YOUR PLAN</p><h2 id="invest-plan-title">Saving goals</h2></div><button type="button" class="invest-text-button" data-nav="goals">View goals</button></header>
+        <div id="invest-goal-preview"></div>
+      </article>
+    </div>
+    <div id="invest-metrics" class="invest-metrics" aria-label="Virtual account snapshot"></div>
+    <div class="invest-overview-bottom">
+      <article class="invest-card invest-movers" aria-labelledby="invest-movers-title"><header class="invest-card-head"><h2 id="invest-movers-title">Market movers</h2><button class="invest-text-button" type="button" data-nav="markets">See all</button></header><div id="invest-movers"></div></article>
+      <article class="invest-card invest-risk-card">
+        <div class="invest-network-art" aria-hidden="true"><i></i><i></i><i></i><b></b><b></b><b></b><b></b></div>
+        <div><p class="invest-kicker">COMPANY NETWORK</p><h2>How does a shock reach you?</h2><p>Follow a change at one company through suppliers, fund holdings, and the demo portfolio.</p>
+        <button class="invest-button secondary" type="button" data-nav="network">Open company network <span aria-hidden="true">↗</span></button></div>
+      </article>
+    </div>
+  </section>
+  <section id="invest-markets" class="invest-page" aria-labelledby="invest-markets-title" hidden>
+    <header class="invest-page-head"><div><p class="invest-kicker">EXPLORE</p><h1 id="invest-markets-title">Markets</h1><p>Search stocks and funds, compare day moves, and open company research.</p></div></header>
+    <div class="invest-card invest-table-card">
+      <div class="invest-toolbar">
+        <label class="invest-search-control"><span class="sr-only">Search markets</span><input id="invest-market-search" type="search" placeholder="Search company or ticker" autocomplete="off"></label>
+        <label class="invest-sector-control"><span>Sector</span><select id="invest-market-sector"></select></label>
+        <div class="invest-pills" id="invest-market-filters" aria-label="Market movers filter">
+          <button type="button" data-invest-filter="all" aria-pressed="true">All</button><button type="button" data-invest-filter="gainers" aria-pressed="false">Gainers</button><button type="button" data-invest-filter="losers" aria-pressed="false">Losers</button>
+        </div>
+      </div>
+      <div id="invest-market-results"></div>
+    </div>
+  </section>
+  <section id="invest-watchlist" class="invest-page" aria-labelledby="invest-watch-title" hidden>
+    <header class="invest-page-head"><div><p class="invest-kicker">FOLLOW THE MARKET</p><h1 id="invest-watch-title">Watchlist</h1><p>Pinned companies and funds are saved in this browser.</p></div><button class="invest-button primary" type="button" data-nav="markets">Find a stock <span aria-hidden="true">↗</span></button></header>
+    <div class="invest-card invest-table-card" id="invest-watch-results"></div>
+  </section>
+  <section id="invest-goals" class="invest-page" aria-labelledby="invest-goals-title" hidden>
+    <header class="invest-page-head"><div><p class="invest-kicker">PLAN AHEAD</p><h1 id="invest-goals-title">Saving goals</h1><p>Set a target and see how long it takes at your current monthly pace.</p></div><button class="invest-button primary" type="button" id="invest-add-goal">Add goal <span aria-hidden="true">+</span></button></header>
+    <div id="invest-goal-cards" class="invest-goals-grid"></div>
+    <p class="invest-goal-note">Estimates use your saved amount and monthly contribution. Adding a goal does not change your paper cash.</p>
+  </section>
+  <section id="network-view" aria-label="Company network">
+  <div class="intro">
+    <div><h1>Company network</h1><p class="lede">Trace who funds whom and how one shock can reach your portfolio.</p></div>
+    <div class="search" id="search-wrap">
+      <label class="sr-only" for="search">Search companies, tickers or sectors</label>
+      <span class="search-icon" aria-hidden="true"></span>
+      <input id="search" type="search" placeholder="Search company, ticker or sector" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="search-results" autocomplete="off">
+      <kbd aria-hidden="true">/</kbd>
+      <ul id="search-results" role="listbox" aria-label="Search results" hidden></ul>
+    </div>
+  </div>
+  <div class="workspace">
+    <section class="map panel" aria-labelledby="map-title" id="map">
+      <header class="panel-header">
+        <div><h2 id="map-title">Relationship map</h2><p id="map-count"></p></div>
+        <div class="map-actions"><button class="btn secondary compact" id="isolate" aria-pressed="false"><span aria-hidden="true">◎</span> Focus node</button><button type="button" class="btn secondary compact" id="pulse-toggle" aria-pressed="true">Glow</button></div>
+      </header>
+      <div class="filters" role="group" aria-label="Filter relationships" id="filters">
+        <button data-filter="all" class="filter active" aria-pressed="true">All links</button>
+        <button data-filter="funding" class="filter" aria-pressed="false"><i class="dot funding"></i>Equity</button>
+        <button data-filter="spend" class="filter" aria-pressed="false"><i class="dot spend"></i>Purchases</button>
+        <button data-filter="holding" class="filter" aria-pressed="false"><i class="dot holding"></i>Fund holdings</button>
+        <button data-filter="partner" class="filter" aria-pressed="false"><i class="dot partner"></i>Partnerships</button>
+      </div>
+      <div class="graph-shell">
+        <div id="graph" tabindex="0" role="region" aria-label="Interactive company relationship map. Pan horizontally on small screens.">
+          <div id="stage"><div id="columns" aria-hidden="true"></div><canvas id="edges" aria-hidden="true"></canvas><canvas id="edge-pulse" aria-hidden="true"></canvas><div id="nodes"></div></div>
+        </div>
+        <div class="zoom" role="group" aria-label="Map zoom"><button id="zoom-out" aria-label="Zoom out">−</button><button id="zoom-reset" aria-label="Fit map">Fit</button><button id="zoom-in" aria-label="Zoom in">+</button></div>
+      </div>
+      <footer class="map-footer"><span class="map-hint">Select a company to open its profile.</span><span id="map-filter-note" aria-live="polite"></span></footer>
+    </section>
+    <aside class="panel inspector" aria-labelledby="entity-title" id="company-panel">
+      <div id="entity"></div>
+      <div class="detail-tabs" id="detail-tabs" role="group" aria-label="Company details">
+        <button data-tab="overview" aria-pressed="true">Overview</button><button data-tab="connections" aria-pressed="false">Connections</button><button data-tab="performance" aria-pressed="false">Chart</button><button data-tab="news" aria-pressed="false">News <span id="news-count"></span></button><button data-tab="trade" aria-pressed="false">Trade</button>
+      </div>
+      <div id="detail"></div>
+      <div id="headlines"></div>
+    </aside>
+  </div>
+  </section>
+  <section id="trade-desk" aria-labelledby="trade-desk-title" hidden>
+    <header class="desk-intro">
+      <div>
+        <p class="eyebrow"><span class="eyebrow-line"></span> PAPER TRADING · <span id="desk-account-label"></span></p>
+        <h1 id="trade-desk-title">Trading workspace</h1>
+        <p class="lede">Manage positions, prepare baskets, and review your fills.</p>
+      </div>
+      <button id="practice-basket" class="btn secondary" type="button">Load sample basket</button>
+    </header>
+    <div class="desk-layout">
+      <section class="desk-watch panel" aria-labelledby="desk-instruments-title">
+        <header class="desk-panel-head">
+          <div><h2 id="desk-instruments-title">Instruments</h2><p id="desk-instrument-count" class="desk-meta"></p></div>
+          <span class="desk-label">EQUITIES</span>
+        </header>
+        <div class="desk-watch-controls">
+          <label class="sr-only" for="desk-search">Filter instruments</label>
+          <input class="desk-field" id="desk-search" type="search" placeholder="Search ticker or name" autocomplete="off">
+          <div class="desk-pills" aria-label="Instrument list">
+            <button type="button" data-instrument-filter="all" aria-pressed="true">All symbols</button>
+            <button type="button" data-instrument-filter="watch" aria-pressed="false">Watchlist</button>
+          </div>
+        </div>
+        <div id="desk-instruments" class="desk-instruments"></div>
+      </section>
+      <div class="desk-centre">
+        <section class="panel desk-chart-panel" aria-labelledby="desk-chart-title">
+          <header class="desk-panel-head">
+            <div><h2 id="desk-chart-title">Price and events</h2><p id="desk-chart-name" class="desk-meta"></p></div>
+            <button id="desk-research" class="btn secondary compact" type="button">Research</button>
+          </header>
+          <div class="desk-chart-tools">
+            <div id="desk-periods" class="periods" role="group" aria-label="Trading chart timeframe">
+              <button type="button" data-desk-period="1H" aria-pressed="false">1H</button>
+              <button type="button" data-desk-period="1D" aria-pressed="true">1D</button>
+              <button type="button" data-desk-period="1M" aria-pressed="false">1M</button>
+              <button type="button" data-desk-period="1Y" aria-pressed="false">1Y</button>
+            </div>
+            <span id="desk-chart-cursor" class="desk-cursor"></span>
+          </div>
+          <div class="desk-price-area" id="desk-price-area">
+            <canvas id="desk-chart-canvas" role="img" aria-label="Price chart"></canvas>
+            <div id="desk-chart-markers"></div>
+            <p id="desk-chart-message"></p>
+          </div>
+          <div id="desk-chart-time" class="desk-chart-time"></div>
+          <div id="desk-chart-links" class="desk-chart-links"></div>
+        </section>
+        <section class="panel desk-positions" aria-labelledby="desk-positions-title">
+          <header class="desk-panel-head">
+            <div><h2 id="desk-positions-title">Open positions</h2><p id="desk-position-count" class="desk-meta"></p></div>
+            <div id="desk-position-pnl" class="desk-pnl"></div>
+          </header>
+          <div id="desk-positions"></div>
+        </section>
+        <section class="panel basket-panel" aria-labelledby="basket-title">
+          <header class="desk-panel-head">
+            <div><h2 id="basket-title">Order basket</h2><p class="desk-meta">Buys use the ask. Sells use the bid.</p></div>
+            <button type="button" class="btn secondary compact" id="basket-add">+ Add leg</button>
+          </header>
+          <div id="basket-rows" class="basket-rows"></div>
+          <div class="basket-settings">
+            <label for="basket-multiplier">Quantity multiplier <input id="basket-multiplier" class="desk-field" type="number" min="1" max="100" step="1" inputmode="numeric" value="1"></label>
+            <button id="basket-clear" type="button" class="desk-link">Clear basket</button>
+          </div>
+          <div id="basket-totals" class="basket-totals"></div>
+          <div id="basket-feedback" class="basket-feedback"></div>
+          <footer class="basket-actions">
+            <p>Sells fill first. The full basket must pass before any trade is booked.</p>
+            <button id="basket-review" class="btn primary" type="button" disabled>Review basket</button>
+          </footer>
+        </section>
+      </div>
+      <div class="desk-right">
+      <section class="panel desk-news" aria-labelledby="desk-news-title">
+        <header class="desk-panel-head">
+          <div><h2 id="desk-news-title">News timeline</h2><p id="desk-news-period" class="desk-meta"></p></div>
+          <span class="desk-label">EVENTS</span>
+        </header>
+        <div id="desk-news-list" class="desk-orders-list"></div>
+      </section>
+      <section class="panel desk-orders" aria-labelledby="desk-orders-title">
+        <header class="desk-panel-head">
+          <div><h2 id="desk-orders-title">Orders</h2><p id="desk-order-count" class="desk-meta"></p></div>
+          <span class="desk-label">PAPER</span>
+        </header>
+        <div class="desk-watch-controls">
+          <label class="sr-only" for="desk-order-search">Search order receipts</label>
+          <input class="desk-field" id="desk-order-search" type="search" placeholder="Search order receipts" autocomplete="off">
+          <div class="desk-pills" aria-label="Filter order history">
+            <button type="button" data-order-filter="all" aria-pressed="true">All</button>
+            <button type="button" data-order-filter="basket" aria-pressed="false">Baskets</button>
+            <button type="button" data-order-filter="single" aria-pressed="false">Single</button>
+          </div>
+        </div>
+        <div id="desk-orders" class="desk-orders-list"></div>
+      </section>
+      </div>
+    </div>
+  </section>
+  <section id="wallet" class="panel wallet" aria-labelledby="wallet-title"></section>
+  <section class="panel scenario" id="portfolio" aria-labelledby="scenario-title">
+    <div class="scenario-head">
+      <div class="scenario-icon" aria-hidden="true">↯</div>
+      <div><p class="eyebrow">PORTFOLIO STRESS TEST</p><h2 id="scenario-title">What if Nova cuts cloud spending?</h2><p>You hold zero Nova shares. Trace the shock through a preset ₹10,000 demo portfolio.</p></div>
+      <button id="run-shock" class="btn primary">Run shock</button>
+    </div>
+    <div id="shock-result" hidden></div>
+    <details class="shock-limit" id="shock-limit">
+      <summary>Explore a ₹500 loss limit</summary>
+      <p>This separate demo starts with ₹5,000 in Atlas, ₹3,000 in GridCloud, and ₹2,000 in virtual cash.</p>
+      <label for="shock-transfer">Move Atlas exposure to virtual cash</label>
+      <select id="shock-transfer" class="desk-field"><option value="0">₹0</option><option value="1000">₹1,000</option><option value="2000">₹2,000</option><option value="5000">₹5,000</option></select>
+      <output id="shock-limit-result" for="shock-transfer" aria-live="polite"></output>
+    </details>
+  </section>
+  <footer class="bottom"><span id="market-foot"></span><button type="button" class="invest-footer-link" data-nav="evidence">Research sources</button></footer>
+</main>
+<dialog id="invest-goal-dialog" class="invest-goal-dialog" aria-labelledby="invest-goal-title">
+  <div class="dialog-body">
+    <button type="button" class="close" data-close="invest-goal-dialog" aria-label="Close goal editor">×</button>
+    <p class="invest-kicker">SAVINGS PLANNER</p><h2 id="invest-goal-title">Add a goal</h2>
+    <form id="invest-goal-form">
+      <label>Goal name <input id="goal-label" maxlength="44" required placeholder="e.g. Design course"></label>
+      <label>Target amount <input id="goal-target" type="number" min=".01" max="100000000" step=".01" required></label>
+      <label>Saved so far <input id="goal-saved" type="number" min="0" max="100000000" step=".01" required></label>
+      <label>Monthly contribution <input id="goal-monthly" type="number" min="0" max="100000000" step=".01" required></label>
+      <p id="goal-feedback" class="dialog-copy" role="status"></p>
+      <div class="dialog-actions"><button type="button" data-close="invest-goal-dialog" class="invest-button secondary">Cancel</button><button type="submit" class="invest-button primary">Save goal</button></div>
+    </form>
+  </div>
+</dialog>
+<dialog id="article-dialog" aria-labelledby="article-title"><div class="dialog-body"><button type="button" class="close" data-close="article-dialog" aria-label="Close news">×</button><div id="article"></div></div></dialog>
+<dialog id="evidence-dialog" aria-labelledby="evidence-title"><div class="dialog-body"><button type="button" class="close" data-close="evidence-dialog" aria-label="Close evidence">×</button><p class="eyebrow">RESEARCH NOTES</p><h2 id="evidence-title">The research behind the map</h2><p class="dialog-copy" id="evidence-copy"></p><div class="evidence-list" id="evidence-list"></div></div></dialog>
+<dialog id="basket-dialog" class="desk-dialog" aria-labelledby="basket-review-title">
+  <div class="dialog-body">
+    <button type="button" class="close" data-close="basket-dialog" aria-label="Close basket review">×</button>
+    <p class="eyebrow">VIRTUAL FUNDS</p><h2 id="basket-review-title">Review basket</h2>
+    <div id="basket-review-details"></div>
+    <p id="basket-review-status" class="basket-message" role="status"></p>
+    <div class="dialog-actions"><button type="button" class="btn secondary" data-close="basket-dialog">Back to basket</button><button type="button" id="basket-confirm" class="btn primary">Place paper basket</button></div>
+  </div>
+</dialog>
+<dialog id="position-dialog" class="desk-dialog" aria-labelledby="position-edit-title">
+  <div class="dialog-body">
+    <button type="button" class="close" data-close="position-dialog" aria-label="Close position editor">×</button>
+    <p class="eyebrow">POSITION EDITOR</p><h2 id="position-edit-title">Adjust position</h2>
+    <p id="position-edit-current" class="dialog-copy"></p>
+    <form id="position-edit">
+      <label for="position-target">Target share quantity</label>
+      <input class="desk-field" id="position-target" type="number" min="0" step="1" inputmode="numeric" required>
+      <p id="position-edit-preview" class="dialog-copy"></p>
+      <div class="dialog-actions"><button type="submit" class="btn primary" id="position-stage">Stage adjustment</button></div>
+    </form>
+  </div>
+</dialog>
+<dialog id="receipt-dialog" class="desk-dialog" aria-labelledby="receipt-title">
+  <div class="dialog-body">
+    <button type="button" class="close" data-close="receipt-dialog" aria-label="Close receipt">×</button>
+    <p class="eyebrow">PAPER TRADE RECEIPT</p><h2 id="receipt-title">Executed orders</h2>
+    <div id="receipt-details"></div>
+  </div>
+</dialog>
+<dialog id="account-dialog" class="desk-dialog" aria-labelledby="account-dialog-title">
+  <div class="dialog-body">
+    <button type="button" class="close" data-close="account-dialog" aria-label="Close account editor">×</button>
+    <p class="eyebrow">PAPER PORTFOLIO</p><h2 id="account-dialog-title">New paper account</h2>
+    <form id="account-form">
+      <label for="account-name">Account name</label>
+      <input id="account-name" class="desk-field" type="text" maxlength="40" required placeholder="e.g. Growth test">
+      <p id="account-message" class="dialog-copy" role="status"></p>
+      <div class="dialog-actions"><button class="btn primary" type="submit">Create account</button></div>
+    </form>
+  </div>
+</dialog>
+<dialog id="alert-dialog" class="desk-dialog" aria-labelledby="alert-dialog-title">
+  <div class="dialog-body">
+    <button type="button" class="close" data-close="alert-dialog" aria-label="Close price alert editor">×</button>
+    <p class="eyebrow">ON-SCREEN ALERTS</p><h2 id="alert-dialog-title">Set a price alert</h2>
+    <form id="alert-form" class="alert-form">
+      <label for="alert-symbol">Instrument</label><select id="alert-symbol" class="desk-field"></select>
+      <label for="alert-side">Trigger when midpoint is</label><select id="alert-side" class="desk-field"><option value="above">At or above</option><option value="below">At or below</option></select>
+      <label for="alert-level">Target price</label><input id="alert-level" class="desk-field" type="number" min=".01" max="1000000" step=".01" required>
+      <p class="dialog-copy">Aster checks active alerts while this tab is open. Market quotes must be fresh.</p>
+      <p id="alert-message" class="dialog-copy" role="status"></p>
+      <div class="dialog-actions"><button class="btn primary" type="submit">Save alert</button></div>
+    </form>
+  </div>
+</dialog>
+<dialog id="research-dialog" class="research-dialog" aria-labelledby="research-title">
+  <div class="dialog-body">
+    <button type="button" class="close" data-close="research-dialog" aria-label="Close company research">×</button>
+    <header id="research-hero"></header>
+    <div class="research-tabs" id="research-tabs" role="group" aria-label="Research sections">
+      <button type="button" data-research-tab="overview" aria-pressed="true">Overview</button>
+      <button type="button" data-research-tab="chart" aria-pressed="false">Chart</button>
+      <button type="button" data-research-tab="financials" aria-pressed="false">Financials</button>
+      <button type="button" data-research-tab="peers" aria-pressed="false">Peers</button>
+      <button type="button" data-research-tab="technicals" aria-pressed="false">Technicals</button>
+      <button type="button" data-research-tab="ownership" aria-pressed="false">Ownership</button>
+      <button type="button" data-research-tab="news" aria-pressed="false">News</button>
+      <button type="button" data-research-tab="filings" aria-pressed="false">Deals &amp; documents</button>
+    </div>
+    <div id="research-body"></div>
+  </div>
+</dialog>
+<section id="node-popover" class="node-popover" role="region" aria-labelledby="popover-title" hidden></section>
+<div class="sr-only" id="announcer" aria-live="polite"></div>
+<script defer src="sample-data.js"></script>
+<script defer src="live-data.js"></script>
+<script defer src="paper.js"></script>
+<script defer src="market-ui.js"></script>
+<script defer src="trading-ui.js"></script>
+<script defer src="research-ui.js"></script>
+<script defer src="portfolio-ui.js"></script>
+<script defer src="invest-ui.js"></script>
+<script defer src="terminal.js"></script>
+</body>
+</html>
