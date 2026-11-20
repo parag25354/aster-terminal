@@ -1,28 +1,24 @@
 const liveGroups = [
-  ['Funds & investors', [
-    ['SPY','SPDR S&P 500 ETF','Benchmark fund','Fund','State Street ETF designed to track the S&P 500. The network shows selected disclosed holdings.','SPY'],
+  ['Platforms', [
     ['MSFT','Microsoft','Azure and equity','Listed','Operates Azure and disclosed that it remains a major OpenAI shareholder.','MSFT'],
-    ['AMZN','Amazon','AWS and equity','Listed','Provides cloud infrastructure through AWS and has invested in Anthropic.','AMZN']
+    ['AMZN','Amazon','E-commerce and cloud','Listed','Operates an online marketplace and provides cloud infrastructure through AWS. It has invested in Anthropic.','AMZN'],
+    ['GOOGL','Alphabet','Search and cloud','Listed','Operates Google Cloud and Gemini. Google LLC entered a disclosed investment agreement with Anthropic.','GOOGL'],
+    ['META','Meta Platforms','Social platforms and AI','Listed','Operates advertising-supported social platforms and develops the Meta AI product family.','META']
   ]],
-  ['Chips', [
+  ['Computing', [
     ['NVDA','NVIDIA','Accelerators','Listed','Designs accelerators, networking hardware and software for AI infrastructure.','NVDA'],
     ['AMD','AMD','Accelerators','Listed','Builds CPUs and GPU accelerators for enterprise and data centre customers.','AMD'],
-    ['AVGO','Broadcom','Custom silicon','Listed','Supplies networking and custom silicon, including collaboration with OpenAI.','AVGO']
-  ]],
-  ['Cloud', [
+    ['AVGO','Broadcom','Custom silicon','Listed','Supplies networking and custom silicon, including collaboration with OpenAI.','AVGO'],
     ['CRWV','CoreWeave','AI infrastructure','Listed','Runs cloud infrastructure and has disclosed equity and commercial ties to NVIDIA.','CRWV'],
-    ['ORCL','Oracle','Oracle Cloud','Listed','Provides cloud infrastructure and participates in the Stargate project.','ORCL'],
-    ['GOOGL','Alphabet','Google Cloud','Listed','Operates Google Cloud and Gemini. Google LLC entered a disclosed investment agreement with Anthropic.','GOOGL']
+    ['ORCL','Oracle','Oracle Cloud','Listed','Provides cloud infrastructure and participates in the Stargate project.','ORCL']
   ]],
   ['AI labs', [
     ['OPENAI','OpenAI','Foundation models','Private','Develops foundation models and has disclosed relationships with multiple infrastructure providers.'],
-    ['ANT','Anthropic','Foundation models','Listed','Develops Claude models. Its IPO announcement identified ANT as the Nasdaq ticker.','ANT'],
-    ['META','Meta Platforms','AI research','Listed','Develops AI models and operates the Meta AI product family.','META']
+    ['ANT','Anthropic','Foundation models','Listed','Develops Claude models. Its IPO announcement identified ANT as the Nasdaq ticker.','ANT']
   ]]
 ];
 
 const liveSources = {
-  spy:'https://www.ssga.com/library-content/products/factsheets/etfs/us/factsheet-us-en-spy.pdf',
   nvidiaEquity:'https://www.sec.gov/Archives/edgar/data/1769628/000176962826000044/crwv-20260123.htm',
   nvidiaSupply:'https://www.sec.gov/Archives/edgar/data/1769628/000176962826000191/crwv-20260422.htm',
   nvidiaRisk:'https://www.sec.gov/Archives/edgar/data/1045810/000104581025000209/nvda-20250727.htm',
@@ -34,16 +30,11 @@ const liveSources = {
   openAws:'https://www.aboutamazon.com/news/aws/aws-open-ai-workloads-compute-infrastructure',
   openOracle:'https://openai.com/index/stargate-advances-with-partnership-with-oracle/',
   openBroadcom:'https://openai.com/index/openai-and-broadcom-announce-strategic-collaboration/',
+  metaNvidia:'https://about.fb.com/news/2026/02/meta-nvidia-announce-long-term-infrastructure-partnership/',
   network:'https://openai.com/index/mrc-supercomputer-networking/',
   antCrwv:'https://www.sec.gov/Archives/edgar/data/1769628/000176962826000220/coreweave1q26earningspress.htm'
 };
 const liveLinks = [
-  ['SPY','NVDA','holding','Disclosed constituent','','Mar 2026','spy'],
-  ['SPY','MSFT','holding','Disclosed constituent','','Mar 2026','spy'],
-  ['SPY','AMZN','holding','Disclosed constituent','','Mar 2026','spy'],
-  ['SPY','AVGO','holding','Disclosed constituent','','Mar 2026','spy'],
-  ['SPY','GOOGL','holding','Disclosed Class A constituent','','Mar 2026','spy'],
-  ['SPY','META','holding','Disclosed constituent','','Mar 2026','spy'],
   ['NVDA','CRWV','funding','Completed equity purchase','$2 billion','23 Jan 2026','nvidiaEquity'],
   ['CRWV','NVDA','spend','Purchases from NVIDIA','17% of 2025 supplier purchases','2025 fiscal year','nvidiaSupply'],
   ['MSFT','OPENAI','funding','Disclosed existing shareholding','','27 Apr 2026','msft'],
@@ -57,6 +48,7 @@ const liveLinks = [
   ['OPENAI','AVGO','partner','Custom accelerator collaboration','10 GW target','13 Oct 2025','openBroadcom'],
   ['OPENAI','AMD','partner','AI training-network protocol','','05 May 2026','network'],
   ['OPENAI','NVDA','partner','AI training-network protocol','','05 May 2026','network'],
+  ['META','NVDA','partner','Multi-year AI infrastructure partnership','','17 Feb 2026','metaNvidia'],
   ['ANT','CRWV','spend','Multi-year cloud agreement','','Q1 2026 disclosure','antCrwv']
 ].map(([from,to,type,label,value,date,source], id)=>({id,from,to,type,label,value,date,url:liveSources[source]}));
 
@@ -73,19 +65,16 @@ const disclosed = [
 const liveResearch = [
   ['Disclosed NVIDIA equity purchase','CoreWeave Form 8-K, January 2026.',liveSources.nvidiaEquity],
   ['Disclosed NVIDIA supplier relationship','CoreWeave proxy statement, 2025 supplier purchases.',liveSources.nvidiaSupply],
-  ['ETF disclosures','State Street issuer fact sheet, March 2026 snapshot. Holdings can change.',liveSources.spy],
   ['AI financing and spillovers','IMF Global Financial Stability Report, October 2026.','https://www.imf.org/-/media/files/publications/gfsr/2026/october/english/ch1.pdf'],
   ['Market data methods','Alpaca feed coverage and real-time entitlements.','https://docs.alpaca.markets/us/docs/about-market-data-api'],
   ['Public exchange charts','TradingView lists the delay and data provider by exchange.','https://www.tradingview.com/widget-docs/markets/north-america/']
 ];
 
 function liveDataset() {
-  const companies = new Map(liveGroups.flatMap(([,rows],group)=>rows.map(([id,name,sector,listing,summary,symbol],index)=>[id,{id,name,sector,listing,summary,symbol,group,index}])));
-  return {groups:liveGroups,companies,links:liveLinks,articles:disclosed,research:liveResearch};
+  return extendMarketCoverage(liveGroups,liveLinks,disclosed,liveResearch,'us');
 }
 
 const liveProfileNotes = {
-  SPY: 'The map shows selected fund constituents from a dated disclosure. A fund position can overlap with stocks you already hold directly.',
   MSFT: 'Azure capacity and Microsoft’s disclosed OpenAI shareholding are separate paths of exposure to the same company.',
   AMZN: 'AWS appears on both the Anthropic and OpenAI paths. Amazon also announced equity funding for Anthropic.',
   NVDA: 'NVIDIA appears twice in the CoreWeave relationship: as an equity investor and as a supplier.',
@@ -96,5 +85,5 @@ const liveProfileNotes = {
   GOOGL: 'The Google–Anthropic link is a dated stock purchase agreement. The displayed figure is the agreement amount.',
   OPENAI: 'The map separates capacity agreements, equity relationships, and engineering partnerships. Each link opens the original dated announcement.',
   ANT: 'The map separates Anthropic’s external capital and the cloud capacity it buys. Longer price windows depend on the available trading history.',
-  META: 'The SPY link represents a disclosed holding in the fund. This selected map covers the documented links shown in the profile.'
+  META: 'Meta disclosed a multi-year NVIDIA partnership to supply technology for AI-optimized data centers.'
 };

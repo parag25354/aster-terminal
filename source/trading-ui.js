@@ -48,7 +48,7 @@ function renderDeskInstruments() {
   if (container.dataset.symbols !== ids) {
     container.dataset.symbols = ids;
     container.innerHTML = symbols.map(c =>
-      '<div class="desk-symbol"><button class="desk-symbol-name" type="button" data-desk-symbol="'+c.id+'"><strong>'+c.id+'</strong><small>'+safeText(c.name)+'</small></button>'+
+      '<div class="desk-symbol"><button class="desk-symbol-name" type="button" data-desk-symbol="'+c.id+'">'+companyMark(c.id)+'<span><strong>'+c.id+'</strong><small>'+safeText(c.name)+'</small></span></button>'+
       '<span class="desk-quote" data-desk-mark="'+c.id+'"></span>'+
       '<button class="desk-add" type="button" data-basket-symbol="'+c.id+'" aria-label="Add '+safeText(c.name)+' to basket">+</button></div>'
     ).join('') || '<p class="desk-empty">No matching instruments.</p>';
@@ -367,7 +367,7 @@ function startDesk() {
   });
   $('practice-basket').addEventListener('click',()=>{
     if(!sampleMode || desk.legs.length)return;
-    desk.legs=[{symbol:shockChip,side:'buy',quantity:'8'},{symbol:shockCloud,side:'buy',quantity:'6'}];
+    desk.legs=[{symbol:shockChip,side:'buy',quantity:indiaMarket?'2':'8'},{symbol:shockCloud,side:'buy',quantity:indiaMarket?'2':'6'}];
     desk.multiplier='1';
     saveDeskDraft();
     renderBasketRows();
@@ -487,7 +487,7 @@ function sampleTimeline(c, period = desk.period) {
 
 function loadDeskChart() {
   if($('trade-desk').hidden)return;
-  if(!desk.chartSymbol)desk.chartSymbol=legacyMode?deskSymbols()[0]?.id:'NVDA';
+  if(!desk.chartSymbol)desk.chartSymbol=legacyMode?deskSymbols()[0]?.id:indiaMarket?'RELIANCE':'NVDA';
   const c=companies.get(desk.chartSymbol);
   if(!c)return;
   const request=++desk.chartRequest;

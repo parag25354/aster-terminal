@@ -1,26 +1,28 @@
 'use strict';
-const {groups,companies,links,articles,research}=replayMode?replayDataset():legacyMode?sampleDataset():liveDataset();
+const {groups,companies,links,articles,research}=replayMode?replayDataset():legacyMode?sampleDataset():indiaMarket?indiaDataset():liveDataset();
 const symbolFromMode=modeParams.get('symbol')?.toUpperCase();
-const homeCompany=companies.has(symbolFromMode)?symbolFromMode:legacyMode?'NOVA':'NVDA';
-const shockExample=replayMode?replayStress:exampleStress;
+const homeCompany=companies.has(symbolFromMode)?symbolFromMode:legacyMode?'NOVA':indiaMarket?'RELIANCE':'NVDA';
+const shockExample=replayMode?(indiaMarket?indiaStress:replayStress):exampleStress;
 const $ = (id) => document.getElementById(id);
 const stage = $('stage'), viewport = $('graph'), canvas = $('edges'), query = $('search');
-const edgeColors = {funding:'#9acbff',spend:'#4c9bff',holding:'#7190ed',partner:'#4877b1'};
-const lightEdgeColors = {funding:'#2454aa',spend:'#0573ae',holding:'#3956b9',partner:'#365e88'};
-const edgePatterns = {funding:[],spend:[7,3],holding:[3,3],partner:[1.5,3.8]};
+const edgeColors = {funding:'#9acbff',spend:'#4c9bff',holding:'#7190ed',partner:'#6095ce',peer:'#739ab9'};
+const lightEdgeColors = {funding:'#2454aa',spend:'#0573ae',holding:'#3956b9',partner:'#365e88',peer:'#536f91'};
+const edgePatterns = {funding:[],spend:[7,3],holding:[3,3],partner:[2,3.8],peer:[9,4,2,4]};
 const isLightTheme = () => document.documentElement.dataset.theme === 'light';
-const edgeNames = {funding:'equity links', spend:'purchase links', holding:'fund holdings', partner:'partnerships'};
+const edgeNames = {funding:'equity links', spend:'purchase links', holding:'fund holdings', partner:'partnerships',peer:'peer links'};
+const isDirected = (link) => link.type !== 'partner' && link.type !== 'peer';
 const impactLabels = {up:'Potential upside',down:'Potential downside',flat:'Mixed or unclear'};
 const periodNames = ['1H','1D','1M','1Y'];
 const {trigger:shockTrigger,chip:shockChip,cloud:shockCloud,fund:shockFund}=shockExample;
 const pathNodes = new Set([shockTrigger,shockChip,shockCloud,shockFund]);
-const paths = new Set([shockTrigger+'/'+shockCloud+'/spend',shockCloud+'/'+shockChip+'/spend',
+const paths = new Set([...(shockExample.marketLinks?.map(link=>link.join('/')) ??
+  [shockTrigger+'/'+shockCloud+'/spend',shockCloud+'/'+shockChip+'/spend']),
   shockFund+'/'+shockChip+'/holding',shockFund+'/'+shockCloud+'/holding']);
 const shockMoves = {[shockChip]:-5,[shockCloud]:-8,[shockFund]:-4.4};
-const fmt = (n) => (legacyMode?'₹':'$') + n.toLocaleString(legacyMode?'en-IN':'en-US');
+const fmt = (n) => (usesRupees()?'₹':'$') + n.toLocaleString(usesRupees()?'en-IN':'en-US');
 const signed = (n) => (n >= 0 ? '+' : '−') + Math.abs(n).toFixed(2) + '%';
 const glyph = (id) => id.slice(0,2);
-const state = {selected:homeCompany, filter:'all', isolate:false, zoom:1, tab:'overview', period:'1D', shock:false, results:[], activeResult:-1};
+const state = {selected:homeCompany, filter:'all', sector:'', isolate:false, zoom:1, tab:'overview', period:'1D', shock:false, results:[], activeResult:-1};
 const positions = new Map();
 const nodeButtons = new Map();
 const pulseCanvas=$('edge-pulse');
@@ -28,7 +30,7 @@ let pulseFrame=0;
 let pulsePaths=[];
 let glow=true;
 let pulseDpr=1;
-const columnPositions = [0.13,0.38,0.63,0.87];
+const columnPositions = legacyMode ? [.13,.38,.63,.87] : groups.map((_,index)=>(index+.5)/groups.length);
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const motion = () => reducedMotion.matches ? 'instant' : 'smooth';
 
@@ -40,6 +42,7 @@ groups.forEach(([name], index) => {
   label.textContent = name.toUpperCase();
   lane.append(label);
   $('columns').append(lane);
+  $('map-sector').add(new Option(name,String(index)));
 });
 companies.forEach((c) => {
   const button = document.createElement('button');
@@ -50,14 +53,22 @@ companies.forEach((c) => {
   button.setAttribute('aria-label', c.name + ' (' + c.id + ')');
   button.setAttribute('aria-controls', 'node-popover');
   button.setAttribute('aria-expanded', 'false');
-  button.innerHTML = '<span class="node-glyph" aria-hidden="true">' + glyph(c.id) + '</span><span class="node-name">' + c.name + '</span>';
+  button.innerHTML = '<span class="node-glyph" aria-hidden="true">' + companyMark(c.id) + '</span><span class="node-name">' + c.name + '</span>';
   $('nodes').append(button);
   nodeButtons.set(c.id, button);
 });
 $('map-count').textContent = companies.size + ' entities · ' + links.length + ' relationships';
+if(legacyMode) {
+  $('network-description').textContent = 'Trace who funds whom and how one shock can reach your portfolio.';
+  $('filters').querySelector('[data-filter="peer"]').hidden = true;
+}
+
+function inFeaturedSector(id) {
+  return state.sector === '' || companies.get(id).group === Number(state.sector);
+}
 
 function linkVisible(link) {
-  return state.filter === 'all' || link.type === state.filter;
+  return (state.filter === 'all' || link.type === state.filter) && (inFeaturedSector(link.from) || inFeaturedSector(link.to));
 }
 function related(link) {
   return link.from === state.selected || link.to === state.selected;
@@ -81,6 +92,7 @@ function paintGraph() {
   const ctx = canvas.getContext('2d');
   ctx.setTransform(dpr,0,0,dpr,0,0);
   ctx.clearRect(0,0,width,height);
+  const visible = links.filter(link => (linkVisible(link) && (!state.isolate || related(link))) || traced(link));
   const highlighted = new Set([state.selected]);
   for (const link of links) {
     if (traced(link) || (linkVisible(link) && related(link))) {
@@ -90,11 +102,10 @@ function paintGraph() {
   }
   for (const [id, button] of nodeButtons) {
     button.classList.toggle('selected', id === state.selected);
-    button.classList.toggle('dim', state.isolate && !highlighted.has(id));
+    button.classList.toggle('dim', !highlighted.has(id) && (state.isolate || !inFeaturedSector(id)));
     button.classList.toggle('shocked', state.shock && pathNodes.has(id));
     button.setAttribute('aria-pressed', String(id === state.selected));
   }
-  const visible = links.filter(link => linkVisible(link) && (!state.isolate || related(link)) || traced(link));
   const weight = (link) => traced(link) ? 2 : related(link) ? 1 : 0;
   visible.sort((a,b) => weight(a) - weight(b));
   for (const link of visible) {
@@ -105,8 +116,8 @@ function paintGraph() {
     const sameLane = start.x === end.x;
     const dir = end.x >= start.x ? 1 : -1;
     const offset = ((link.id % 5)-2) * 4;
-    const x1 = start.x + (sameLane ? 16 : 17*dir);
-    const x2 = end.x + (sameLane ? 16 : -17*dir);
+    const x1 = start.x + (sameLane ? 20 : 21*dir);
+    const x2 = end.x + (sameLane ? 20 : -21*dir);
     const y1 = start.y - 10 + offset / 2;
     const y2 = end.y - 10 + offset / 2;
     const span = sameLane ? 52 : Math.abs(x2-x1)*.40;
@@ -119,19 +130,19 @@ function paintGraph() {
       braid.addColorStop(.51,color+(emphasis?'66':'28'));
       braid.addColorStop(1,color+'29');
       ctx.strokeStyle = braid;
-      for (const thread of [-4,4]) {
+      for (const thread of (link.type==='peer' ? [] : [-4,4])) {
         ctx.lineWidth=emphasis?1.2:.65;
         ctx.beginPath();
         ctx.moveTo(x1,y1);
         ctx.bezierCurveTo(control1.x,control1.y+thread*3,control2.x,control2.y-thread*3,x2,y2);
         ctx.stroke();
       }
-      if(emphasis || link.type==='funding' || link.type==='spend') {
+      if(isDirected(link) && (emphasis || link.type==='funding' || link.type==='spend')) {
         pulsePaths.push({x1,y1,x2,y2,control1,control2,emphasis,id:link.id,color});
       }
     }
-    ctx.strokeStyle = color + (emphasis === 2 ? 'ec' : emphasis === 1 ? 'ce' : (glow?'7c':'58'));
-    ctx.lineWidth = emphasis === 2 ? 3 : emphasis === 1 ? 1.72 : .89;
+    ctx.strokeStyle = color + (emphasis === 2 ? 'ec' : emphasis === 1 ? 'ce' : (glow?'96':'68'));
+    ctx.lineWidth = emphasis === 2 ? 3 : emphasis === 1 ? 1.72 : .96;
     ctx.shadowBlur = emphasis === 2 ? 11 : emphasis === 1 ? 5 : 0;
     ctx.shadowColor = color;
     ctx.setLineDash(edgePatterns[link.type]);
@@ -141,7 +152,7 @@ function paintGraph() {
     ctx.stroke();
     ctx.setLineDash([]);
     ctx.shadowBlur = 0;
-    if ((emphasis || state.filter !== 'all') && link.type !== 'partner') {
+    if ((emphasis || state.filter !== 'all') && isDirected(link)) {
       const angle = Math.atan2(y2-control2.y,x2-control2.x);
       const length = emphasis === 2 ? 9 : 6;
       ctx.fillStyle = color;
@@ -190,16 +201,19 @@ function drawPulses(now) {
 
 function sizeGraph() {
   const handheld = viewport.clientWidth < 580;
-  const baseWidth = Math.max(handheld ? 640 : 590, viewport.clientWidth);
-  const baseHeight = handheld ? 397 : innerWidth>=1080 ? Math.min(595,Math.max(470,Math.round(innerHeight*.46))) : 432;
+  const minimumWidth = legacyMode ? (handheld ? 640 : 590) : groups.length * 108;
+  const baseWidth = Math.max(minimumWidth, viewport.clientWidth);
+  const baseHeight = handheld ? 444 : Math.min(700,Math.max(510,Math.round(innerHeight*.58)));
   stage.style.width = Math.round(baseWidth * state.zoom) + 'px';
   stage.style.height = Math.round(baseHeight * state.zoom) + 'px';
   const width = stage.clientWidth, height = stage.clientHeight;
+  const top = 81, bottom = 57;
+  const spacing = handheld ? 78 : 116;
   for (const [id,c] of companies) {
     const groupLength = groups[c.group][1].length;
-    const top = 78, bottom = 53;
-    const distribution = groupLength === 1 ? .5 : .06 + .88*c.index/(groupLength-1);
-    const point = {x:width * columnPositions[c.group], y:top + distribution * (height-top-bottom)};
+    const span = Math.min(spacing * (groupLength-1),height-top-bottom);
+    const offset = groupLength===1 ? 0 : span*(c.index/(groupLength-1)-.5);
+    const point = {x:width * columnPositions[c.group], y:(height+top-bottom)/2+offset};
     positions.set(id, point);
     const button = nodeButtons.get(id);
     button.style.left = point.x + 'px';
@@ -219,7 +233,7 @@ function centerNode(id) {
 function renderInspector() {
   const c = companies.get(state.selected);
   const news = companyNews(c.id);
-  $('entity').innerHTML = '<div class="entity"><div class="entity-top"><span class="entity-glyph" aria-hidden="true">' + glyph(c.id) + '</span><div><h2 id="entity-title" tabindex="-1">' + c.name + '</h2><small>' + c.id + ' · ' + c.sector + ' · ' + companyInstrument(c) + '</small></div><span class="live-entity-quote" id="entity-quote"></span></div><p>' + c.summary + '</p></div>';
+  $('entity').innerHTML = '<div class="entity"><div class="entity-top"><span class="entity-glyph" aria-hidden="true">' + companyMark(c.id) + '</span><div><h2 id="entity-title" tabindex="-1">' + c.name + '</h2><small>' + c.id + ' · ' + c.sector + ' · ' + companyInstrument(c) + '</small></div><span class="live-entity-quote" id="entity-quote"></span></div><p>' + c.summary + '</p></div>';
   $('news-count').textContent = news.length;
   $('detail-tabs').querySelectorAll('[data-tab]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.tab === state.tab)));
   $('detail').scrollTop = 0;
@@ -237,7 +251,8 @@ function renderConnections(c) {
     ['Investors', (l) => l.type === 'funding' && l.to === c.id],
     ['Investments', (l) => l.type === 'funding' && l.from === c.id],
     ['Fund holdings', (l) => l.type === 'holding'],
-    ['Commercial ties', (l) => l.type === 'spend' || l.type === 'partner']
+    ['Commercial ties', (l) => l.type === 'spend' || l.type === 'partner'],
+    ['Industry peers', (l) => l.type === 'peer']
   ];
   const groups = categories.map(([label,match]) => {
     const matches = visible.filter(match);
@@ -264,7 +279,7 @@ function scenarioReturns(c, horizon) {
 function renderSamplePerformance(c) {
   const horizon = periodNames.indexOf(state.period);
   if (c.price === undefined) {
-    $('detail').innerHTML = '<p class="empty"><strong>Private company</strong><br>Explore its investors and commercial ties in the Connections tab.</p>';
+    $('detail').innerHTML = '<p class="empty"><strong>'+companyInstrument(c)+'</strong><br>Explore its documented relationships in the Connections tab.</p>';
     return;
   }
   const daily = state.shock ? (shockMoves[c.id] ?? c.change) : c.change;
@@ -278,15 +293,11 @@ function renderSamplePerformance(c) {
     '<div class="periods" role="group" aria-label="Performance timeframe">' + periodNames.map(label => '<button data-period="' + label + '" aria-pressed="' + (label === state.period) + '">' + label + '</button>').join('') + '</div><div class="performance-meta"><span class="price-num">' + money(displayPrice) + '</span><strong class="' + (move>=0?'up':'down') + '">' + signed(move) + '</strong></div><canvas class="mini-chart" id="stock-chart" role="img" aria-label="' + c.name + ' fictional ' + state.period + ' line chart, ' + signed(move) + '"></canvas><div class="odds"><h3 class="eyebrow">SIMULATED OUTCOMES</h3><div class="odds-bar" aria-hidden="true">' + totals.map(n => '<span style="width:' + n + '%"></span>').join('') + '</div><div class="odds-label">' + totals.map((n,i) => '<span class="' + name[i] + '">' + n + '% ' + name[i] + '</span>').join('') + '</div></div><p class="performance-notice">100 fictional outcomes for ' + state.period + '. Flat is within ±0.1%.</p>' +
     (c.upside ? '<p class="performance-notice"><strong class="up">Upside:</strong> ' + c.upside + '<br><strong class="down">Risk:</strong> ' + c.downside + '</p>' : '');
   const values=tape.map(point=>point.value);
-  const benchmark=replayMode && c.id!=='SPY'?sampleTimeline(companies.get('SPY'),state.period).map(point=>point.value):[];
-  const peer=replayMode?companyHighlights(c).map(link=>companies.get(link.from===c.id?link.to:link.from))
-    .find(company=>hasMarketSymbol(company) && company.id!=='SPY' && company.listing!=='Demo basket'):null;
+  const peer=replayMode?chartPeer(c):null;
   const peerValues=peer?sampleTimeline(peer,state.period).map(point=>point.value):[];
-  const summary=benchmark.length?' · SPY '+signed((benchmark.at(-1)/benchmark[0]-1)*100):'';
-  const peerSummary=peerValues.length?' · '+peer.id+' '+signed((peerValues.at(-1)/peerValues[0]-1)*100):'';
-  $('stock-chart').insertAdjacentHTML('afterend','<div class="chart-legend"><span>Base 100'+summary+
-    '</span>'+(peerSummary?'<span class="chart-peer">'+peerSummary.slice(3)+'</span>':'')+'</div>');
-  drawMarketChart(values,benchmark,peerValues);
+  const peerSummary=peerValues.length?'<span class="chart-peer">'+peer.id+' '+signed(seriesMove(peerValues))+'</span>':'';
+  $('stock-chart').insertAdjacentHTML('afterend','<div class="chart-legend"><span>'+c.id+' · Base 100</span>'+peerSummary+'</div>');
+  drawMarketChart(values,peerValues);
 }
 
 function activateNav(name) {
@@ -295,12 +306,21 @@ function activateNav(name) {
     button.classList.toggle('active',selected);
     if(selected)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current');
   });
-  $('network-view').hidden = name !== 'network';
+  const network = $('network-view');
+  const showNetwork = name === 'network' || name === 'overview';
+  const slot = $(name==='overview'?'overview-network-slot':'network-route-slot');
+  const moved = showNetwork && network.parentElement !== slot;
+  if(moved)slot.append(network);
+  network.hidden = !showNetwork;
   $('trade-desk').hidden = name !== 'trading';
   const showWallet = name === 'network' || name === 'portfolio';
   $('wallet').hidden = !showWallet;
   $('portfolio').hidden = !sampleMode || !showWallet;
   switchInvestPage(name);
+  if(moved) {
+    sizeGraph();
+    centerNode(state.selected);
+  }
   if(name==='trading')showTrading();
   updatePulses();
 }
@@ -321,10 +341,16 @@ function selectCompany(id, follow = true) {
   if (!companies.has(id)) return;
   closeQuickCard();
   state.selected = id;
+  if (!inFeaturedSector(id)) state.sector = $('map-sector').value = '';
   state.tab = 'overview';
   closeSearch();
   query.value = '';
-  openWorkspace('network',false);
+  if ($('network-view').hidden) openWorkspace('network',false);
+  const company = companies.get(id);
+  if (invest.page==='overview' && !legacyMode && hasMarketSymbol(company) && invest.ticker!==id) {
+    invest.ticker = $('overview-ticker').value = id;
+    renderInvestOverview();
+  }
   renderInspector();
   paintGraph();
   updateTicker();
@@ -333,7 +359,7 @@ function selectCompany(id, follow = true) {
   if (follow && matchMedia('(max-width:780px)').matches) {
     $('company-panel').scrollIntoView({behavior:motion(),block:'nearest'});
   }
-  $('announcer').textContent = 'Selected ' + companies.get(id).name + '. Company details updated.';
+  $('announcer').textContent = 'Selected ' + company.name + '. Company details updated.';
 }
 
 function showSearch() {
@@ -403,6 +429,11 @@ function setFilter(filter) {
   });
   paintGraph();
 }
+$('map-sector').addEventListener('change',event=>{
+  state.sector = event.target.value;
+  if(inFeaturedSector(state.selected)) paintGraph();
+  else selectCompany(groups[Number(state.sector)][1][0][0],false);
+});
 function renderLossLimit() {
   const chipExposure = 5000 - Number($('shock-transfer').value);
   const cloudLoss = 3000*.08;
@@ -423,6 +454,7 @@ function toggleShock(force) {
   const result = $('shock-result');
   result.hidden = !state.shock;
   if (state.shock) {
+    if (invest.page!=='network') openWorkspace('network',false);
     market.shockTick=market.ticks;
     state.isolate = false;
     $('isolate').setAttribute('aria-pressed','false');
@@ -456,7 +488,7 @@ document.addEventListener('click',event => {
     else {selectCompany(company,false);openQuickCard();}
   } else if (filter) setFilter(filter);
   else if (tab || el.dataset.popTab) {
-    const fromOutside = Boolean(el.closest('#headlines') || el.dataset.popTab);
+    const fromOutside = Boolean(el.closest('#headlines, .profile-heading') || el.dataset.popTab);
     state.tab=tab || el.dataset.popTab;
     closeQuickCard();
     renderInspector();
@@ -485,6 +517,11 @@ document.addEventListener('click',event => {
     state.zoom = el.id === 'zoom-reset' ? 1 : Math.round(Math.max(1,Math.min(1.60,state.zoom+(el.id==='zoom-in'?.2:-.2)))*10)/10;
     sizeGraph();
     centerNode(state.selected);
+  } else if (el.id === 'overview-risk') {
+    if(sampleMode) {
+      openWorkspace('network',false);
+      $('portfolio').scrollIntoView({behavior:motion(),block:'start'});
+    } else location.assign(modeLink('replay',{page:'network'}));
   } else if (el.id === 'run-shock') { toggleShock(); $('portfolio').scrollIntoView({behavior:motion(),block:'nearest'}); }
   else if ('newsShock' in el.dataset) {
     $('article-dialog').close();
@@ -504,14 +541,15 @@ setupModeScreen();
 $('market-foot').textContent=legacyMode
   ?'CLASSIC SIMULATION · Fictional companies, prices and virtual funds.'
   :replayMode?'REPLAY · Real companies and dated disclosures. Illustrative prices and paper fills.'
-  :'LIVE MARKET · Actual market data. Prices may be delayed. Paper orders only.';
+  :'LIVE MARKET · Actual market data. Public quotes are delayed or end-of-day. Paper orders only.';
 $('evidence-copy').textContent=legacyMode?'Research behind the fictional map and scenarios.':'Dated disclosures show selected company links. These relationships can change.';
 if(replayMode) {
   $('scenario-title').textContent=shockExample.title;
-  $('scenario-copy').textContent='Trace a hypothetical AI spending slowdown through a preset $10,000 virtual portfolio.';
-  $('shock-limit-label').textContent='Explore a $500 loss limit';
-  $('shock-limit-copy').textContent='This separate demo starts with $5,000 in NVIDIA, $3,000 in CoreWeave, and $2,000 in virtual cash.';
-  $('shock-transfer-label').textContent='Move NVIDIA exposure to virtual cash';
+  $('scenario-copy').textContent='Trace the scenario through a preset '+fmt(10000)+' virtual portfolio.';
+  $('shock-limit-label').textContent='Explore a '+fmt(500)+' loss limit';
+  $('shock-limit-copy').textContent='This separate demo starts with '+fmt(5000)+' in '+shockExample.chipName+', '+
+    fmt(3000)+' in '+shockExample.cloudName+', and '+fmt(2000)+' in virtual cash.';
+  $('shock-transfer-label').textContent='Move '+shockExample.chipName+' exposure to virtual cash';
   Array.from($('shock-transfer').options).forEach(option=>{option.textContent=fmt(Number(option.value));});
 }
 startInvest();
@@ -523,6 +561,7 @@ if(activeMode) {
   window.addEventListener('hashchange',() => activateNav(workspaceFromLocation()));
   renderInspector();
   sizeGraph();
+  if(!$('network-view').hidden)centerNode(state.selected);
   updateTicker();
   renderWallet();
   startMarket();

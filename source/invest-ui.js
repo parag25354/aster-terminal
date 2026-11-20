@@ -1,7 +1,7 @@
 'use strict';
 
 const investPages = ['overview','markets','watchlist','goals'];
-const invest = {page:'', period:'1M', direction:'all', goal:null, overviewRequest:0};
+const invest = {page:'', period:'1M', direction:'all', goal:null, ticker:null, overviewRequest:0};
 const defaultGoals = [
   {id:'emergency',name:'Emergency fund',target:30000,saved:12000,monthly:3000},
   {id:'school',name:'Further education',target:60000,saved:18000,monthly:4000},
@@ -22,7 +22,7 @@ function readGoals() {
     if (Array.isArray(data)) return data;
   } catch {}
   return defaultGoals.map(goal => Object.fromEntries(Object.entries(goal).map(([key,value]) =>
-    [key, typeof value === 'number' && !legacyMode ? value/100 : value])));
+    [key, typeof value === 'number' && !usesRupees() ? value/100 : value])));
 }
 
 function renderGoals() {
@@ -72,25 +72,41 @@ function paintInvestChart(canvas,points) {
   const values = points.map(point => point.value);
   const low = Math.min(...values), high = Math.max(...values);
   const pad = Math.max((high-low)*.13,.01), span = high-low+2*pad;
-  const x = i => 2+i*(width-56)/(values.length-1);
-  const y = value => height-9-(value-low+pad)/span*(height-18);
+  const axisWidth=width<500?58:78, right=width-axisWidth, top=15, bottom=height-12;
+  const x = i => 2+i*(right-2)/(values.length-1);
+  const y = value => bottom-(value-low+pad)/span*(bottom-top);
   const light = document.documentElement.dataset.theme === 'light';
-  const rising = values.at(-1) >= values[0];
-  const line = rising ? (light?'#0b806b':'#a7cf85') : (light?'#b52845':'#ffa0a7');
-  ctx.font = '10px monospace';
-  for (let i=0;i<4;i++) {
-    const value = low+(high-low)*i/3, row = y(value);
-    ctx.strokeStyle = light?'#dae4e8':'#ffffff26';
-    ctx.beginPath();ctx.moveTo(2,row);ctx.lineTo(width-50,row);ctx.stroke();
-    ctx.fillStyle = light?'#485667':'#c8d2c5';
-    ctx.fillText(value.toFixed(2),width-47,row+3);
+  const line = light?'#2261b8':'#86beff';
+  ctx.font = '11px monospace';
+  ctx.textBaseline='middle';
+  for (let i=0;i<=5;i++) {
+    const value = low-pad+span*i/5, row = y(value);
+    ctx.strokeStyle = light?'#dbe4f0':'#789ac421';
+    ctx.beginPath();ctx.moveTo(2,row);ctx.lineTo(right,row);ctx.stroke();
+    ctx.fillStyle = light?'#536b89':'#a5b9d2';
+    ctx.fillText(value.toFixed(2),right+8,row);
   }
   const trace = () => values.forEach((value,i) => i ? ctx.lineTo(x(i),y(value)) : ctx.moveTo(x(i),y(value)));
-  const fill = ctx.createLinearGradient(0,0,0,height);
-  fill.addColorStop(0,line+'45');fill.addColorStop(1,line+'04');
-  ctx.beginPath();trace();ctx.lineTo(x(values.length-1),height);ctx.lineTo(x(0),height);ctx.closePath();
+  const fill = ctx.createLinearGradient(0,0,0,bottom);
+  fill.addColorStop(0,line+(light?'33':'3d'));fill.addColorStop(1,line+'02');
+  ctx.beginPath();trace();ctx.lineTo(right,bottom);ctx.lineTo(x(0),bottom);ctx.closePath();
   ctx.fillStyle=fill;ctx.fill();
-  ctx.beginPath();trace();ctx.strokeStyle=line;ctx.lineWidth=2;ctx.stroke();
+  ctx.beginPath();trace();ctx.strokeStyle=line;ctx.lineWidth=2.15;ctx.lineJoin='round';ctx.stroke();
+  if(canvas.id!=='invest-market-chart')return;
+  const tooltip=$('overview-chart-tooltip');
+  tooltip.hidden=canvas.investPointer===undefined;
+  if(tooltip.hidden)return;
+  const index=Math.max(0,Math.min(values.length-1,Math.round((canvas.investPointer-2)/(right-2)*(values.length-1))));
+  const point=points[index], px=x(index), py=y(point.value);
+  ctx.strokeStyle=light?'#5881b280':'#b6d2fc92';
+  ctx.setLineDash([3,5]);ctx.beginPath();ctx.moveTo(px,top);ctx.lineTo(px,bottom);ctx.stroke();ctx.setLineDash([]);
+  ctx.beginPath();ctx.arc(px,py,4,0,Math.PI*2);ctx.fillStyle=line;ctx.fill();
+  const formatted=legacyMode?point.value.toFixed(2):money(point.value);
+  const time=new Intl.DateTimeFormat(usesRupees()?'en-IN':'en-US',{
+    timeZone:legacyMode?'Asia/Kolkata':marketTimeZone,month:'short',day:'numeric',hour:'numeric',minute:'2-digit',hour12:true
+  }).format(new Date(point.time));
+  tooltip.textContent=formatted+' · '+time;
+  tooltip.style.left=Math.min(right-20,Math.max(88,px))+'px';
 }
 
 function investPeriodButtons(attribute,active) {
@@ -108,35 +124,46 @@ function renderInvestOverview() {
   canvas.parentElement.hidden=exchange;
   $('invest-chart-range').hidden=exchange;
   $('invest-periods').hidden=exchange;
-  $('invest-chart-title').textContent = legacyMode ? 'Market 500' : 'SPY';
-  $('invest-index-label').textContent = legacyMode ? 'FICTIONAL MARKET BENCHMARK' :
-    replayMode ? 'BENCHMARK · SIMULATED PRICES' : exchange ? 'MARKET BENCHMARK · DELAYED' : 'MARKET BENCHMARK · ALPACA';
+  const ticker=companies.get(invest.ticker);
+  const markHost=$('overview-company-mark');
+  markHost.hidden=legacyMode;
+  if(!legacyMode && markHost.dataset.companyMark!==ticker.id) {
+    markHost.innerHTML=companyMark(ticker.id);
+    markHost.dataset.companyMark=ticker.id;
+  }
+  $('invest-chart-title').textContent = legacyMode?'Market 500':ticker.name;
+  $('invest-index-label').textContent = legacyMode?'FICTIONAL MARKET INDEX':
+    ticker.id+' · '+(replayMode?'SIMULATED PRICES':exchange?(indiaMarket?'BSE END OF DAY':'DELAYED MARKET DATA'):'ALPACA');
+  canvas.setAttribute('aria-label', (legacyMode?'Market 500':ticker.name)+' price chart');
   const render = (points,message='') => {
     if (request !== invest.overviewRequest || invest.page !== 'overview') return;
     canvas.investPoints = points;
+    if(points.length<2)$('overview-chart-tooltip').hidden=true;
     paintInvestChart(canvas,points);
     const first = points[0], last = points.at(-1);
-    const change = first ? (last.value/first.value-1)*100 : null;
-    $('invest-index-value').textContent = last ? (sampleMode ? last.value.toFixed(2) : money(last.value)) : '—';
+    const change = first && last!==first?(last.value/first.value-1)*100:null;
+    $('invest-index-value').textContent = last ? (legacyMode ? last.value.toFixed(2) : money(last.value)) : '—';
     $('invest-index-change').className = tone(change);
     $('invest-index-change').textContent = change === null ? '' : signed(change);
-    const timeZone=legacyMode?'Asia/Kolkata':'America/New_York';
-    const time = point => new Date(point.time).toLocaleString('en-US',period==='1D'||period==='1H'
+    const timeZone=legacyMode?'Asia/Kolkata':marketTimeZone;
+    const time = point => new Date(point.time).toLocaleString(usesRupees()?'en-IN':'en-US',period==='1D'||period==='1H'
       ? {hour:'2-digit',minute:'2-digit',timeZone,timeZoneName:'short'} : {month:'short',day:'numeric',year:'numeric',timeZone});
     $('invest-chart-range').innerHTML = first ? '<span>'+time(first)+'</span><span>'+time(last)+'</span>' : '';
     $('invest-chart-empty').hidden = Boolean(first);
     $('invest-chart-empty').textContent = message;
   };
-  if (sampleMode) {
-    const series = (replayMode?['SPY']:['ATLS','GRID','LUMN']).map(id => sampleTimeline(companies.get(id),period));
+  if (legacyMode) {
+    const series = ['ATLS','GRID','LUMN'].map(id => sampleTimeline(companies.get(id),period));
     render(series[0].map((point,i) => ({time:point.time,value:series.reduce((sum,points) => sum+points[i].value/points[0].value,0)*100/series.length})));
+  } else if (replayMode) {
+    render(sampleTimeline(ticker,period));
   } else if (exchange) {
     $('invest-index-value').textContent='';
     $('invest-index-change').textContent='';
-    mountExchangeChart(exchangeHost,'SPY',period);
+    mountExchangeChart(exchangeHost,ticker.id,period);
   } else {
     const kind = period === '1H' || period === '1D' ? 'intraday' : 'daily';
-    getHistory('SPY',kind).then(bars => {
+    getHistory(ticker.symbol,kind).then(bars => {
       render(selectPeriodBars(bars,period).map(bar => ({time:Date.parse(bar.at),value:bar.close})), 'Price history is unavailable.');
     }).catch(() => render([], 'Price history is unavailable.'));
   }
@@ -144,13 +171,18 @@ function renderInvestOverview() {
   $('invest-metrics').innerHTML = [['Paper account value',snapshot.equity],['Virtual cash',wallet.cash],['Unrealised P&L',snapshot.unrealised]].map(([label,value],i) =>
     '<div class="invest-stat"><span>'+label+'</span><strong class="'+(i===2?tone(value):'')+'">'+(value===null?'—':money(value/100))+'</strong></div>'
   ).join('');
-  const movers = listedCompanies().map(company => ({company,move:investMove(company,mark(company))}))
-    .filter(({move}) => move !== null).sort((a,b) => Math.abs(b.move)-Math.abs(a.move)).slice(0,4);
+  const movers = exchange
+    ? readWatch().filter(id=>exchangeSymbols[id]).slice(0,4).map(id=>({company:companies.get(id),move:null}))
+    : listedCompanies().map(company => ({company,move:investMove(company,mark(company))}))
+      .filter(({move}) => move !== null).sort((a,b) => Math.abs(b.move)-Math.abs(a.move)).slice(0,4);
+  $('invest-movers-title').textContent=exchange?'Watchlist charts':'Market movers';
   $('invest-movers').innerHTML = movers.length ? movers.map(({company,move}) =>
-    '<button type="button" class="invest-mover" data-open-research="'+company.id+'"><span class="invest-mover-symbol">'+company.id+'</span>'+
+    '<button type="button" class="invest-mover" data-open-research="'+company.id+'"'+
+    (exchange?' data-research-open-tab="chart"':'')+'>'+companyMark(company.id)+
     '<span><strong>'+safeText(company.name)+'</strong><small>'+safeText(company.sector)+'</small></span>'+
-    '<strong class="'+tone(move)+'">'+signed(move)+'</strong></button>'
-  ).join('') : '<p class="invest-empty">'+(exchange?'Open Markets for the delayed quote board.':'Day moves will appear when a quote and previous close are available.')+'</p>';
+    '<strong class="'+tone(move)+'">'+(move===null?'Chart':signed(move))+'</strong></button>'
+  ).join('') : '<p class="invest-empty">'+(exchange?'Pin a company in Markets to bring its chart here.':'Day moves will appear when a quote and previous close are available.')+'</p>';
+
 }
 
 function renderInvestTable() {
@@ -180,7 +212,7 @@ function renderInvestTable() {
     '<th scope="col">Watch</th><th scope="col">Order</th></tr></thead><tbody>'+
     rows.map(({company,quote,move}) => {
       const {id,name,sector} = company, pinned = saved.includes(id);
-      return '<tr><td><button type="button" class="invest-company-button" data-open-research="'+id+'">'+safeText(name)+'<small>'+id+'</small></button></td>'+
+      return '<tr><td><button type="button" class="invest-company-button" data-open-research="'+id+'">'+companyMark(id)+'<span>'+safeText(name)+'<small>'+id+'</small></span></button></td>'+
         '<td>'+safeText(sector)+'</td>'+
         (exchange?'<td><button type="button" class="invest-text-button" data-open-research="'+id+'" data-research-open-tab="chart">View chart</button></td>':
           '<td>'+(quote?money(quote.mid):'—')+'</td><td class="'+tone(move)+'">'+(move===null?'—':signed(move))+'</td>')+
@@ -226,17 +258,72 @@ function applyAsterTheme(theme) {
   if (state.tab === 'performance') renderPerformance(companies.get(state.selected));
 }
 
-function startInvest() {
-  applyAsterTheme(document.documentElement.dataset.theme === 'light' ? 'light' : 'dark');
-  $('theme-toggle').addEventListener('click',() => {
-    const theme = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
-    try { localStorage.setItem('aster:theme',theme); } catch {}
+function startAppearance() {
+  const system=matchMedia('(prefers-color-scheme: dark)');
+  const root=document.documentElement;
+  const setAppearance=(preference,save=true)=>{
+    root.dataset.themePreference=preference;
+    if(save) {
+      try {localStorage.setItem('aster:theme',preference);} catch {}
+    }
+    const theme=preference==='system'?(system.matches?'dark':'light'):preference;
     applyAsterTheme(theme);
+    document.querySelectorAll('[name="gate-theme"]').forEach(input=>{input.checked=input.value===preference;});
+  };
+  setAppearance(root.dataset.themePreference || 'dark',false);
+  $('theme-toggle').addEventListener('click',()=>setAppearance(root.dataset.theme==='light'?'dark':'light'));
+  document.querySelectorAll('[name="gate-theme"]').forEach(input=>input.addEventListener('change',()=>setAppearance(input.value)));
+  system.addEventListener('change',()=>{
+    if(root.dataset.themePreference==='system')setAppearance('system',false);
   });
-  new ResizeObserver(() => {
-    const chart = $('invest-market-chart');
-    paintInvestChart(chart,chart.investPoints ?? []);
-  }).observe($('invest-market-chart'));
+}
+
+function startOverviewChart() {
+  const chart=$('invest-market-chart');
+  const selector=$('overview-ticker');
+  const available=listedCompanies();
+  invest.ticker=available.some(c=>c.id===symbolFromMode)?symbolFromMode:indiaMarket?'RELIANCE':'NVDA';
+  selector.closest('label').hidden=legacyMode;
+  selector.innerHTML=available.map(c=>'<option value="'+safeText(c.id)+'">'+safeText(c.name)+' · '+safeText(c.id)+'</option>').join('');
+  selector.value=invest.ticker;
+  $('overview-market-label').textContent=legacyMode?'CLASSIC SIMULATION':indiaMarket?'INDIAN EQUITIES':'U.S. EQUITIES';
+  selector.addEventListener('change',()=>{
+    invest.ticker=selector.value;
+    selectCompany(invest.ticker,false);
+    renderInvestOverview();
+  });
+  const paint=()=>paintInvestChart(chart,chart.investPoints ?? []);
+  new ResizeObserver(paint).observe(chart);
+  chart.addEventListener('pointermove',event=>{
+    if(event.pointerType==='touch')return;
+    chart.investPointer=event.clientX-chart.getBoundingClientRect().left;
+    paint();
+  });
+  chart.addEventListener('pointerleave',()=>{
+    delete chart.investPointer;
+    $('overview-chart-tooltip').hidden=true;
+    paint();
+  });
+  const expand=$('overview-expand'), panel=$('overview-chart-panel');
+  expand.hidden=!document.fullscreenEnabled;
+  expand.addEventListener('click',async()=>{
+    try {
+      if(document.fullscreenElement===panel)await document.exitFullscreen();
+      else await panel.requestFullscreen();
+    } catch {
+      $('announcer').textContent='Full screen is unavailable in this browser.';
+    }
+  });
+  document.addEventListener('fullscreenchange',()=>{
+    const expanded=document.fullscreenElement===panel;
+    expand.textContent=expanded?'Exit full screen':'Expand chart';
+    expand.setAttribute('aria-pressed',String(expanded));
+  });
+}
+
+function startInvest() {
+  startAppearance();
+  if(activeMode)startOverviewChart();
   document.querySelector('[data-home-link]').addEventListener('click',event => {
     event.preventDefault();
     if(activeMode)openWorkspace('overview');

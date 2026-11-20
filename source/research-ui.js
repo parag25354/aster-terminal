@@ -30,7 +30,7 @@ const companyFilingLinks={
   AMZN:'https://www.sec.gov/edgar/browse/?CIK=1018724',
   CRWV:'https://www.sec.gov/edgar/browse/?CIK=1769628',
   ANT:'https://investor.anthropic.com/sec-filings/default.aspx',
-  SPY:liveSources.spy
+  ...indiaFilingLinks
 };
 
 function profileFacts(items) {
@@ -72,7 +72,7 @@ function marketFacts(c) {
 }
 function financeDetails(c) {
   const sample=sampleFinancials[c.id];
-  const filed=reportedFinancials[c.id];
+  const filed=indiaMarket?null:reportedFinancials[c.id];
   if(legacyMode && sample) {
     return '<p class="desk-meta">Illustrative quarter · Fictional company figures</p>'+
       profileFacts([['Revenue',sample[0]],['Revenue growth YoY',sample[1]],['Operating margin',sample[2]]]);
@@ -124,13 +124,13 @@ function renderResearch() {
   researchPanel.chartObserver?.disconnect();
   const request=++researchPanel.request;
   const mapped=links.filter(link=>link.to===c.id || link.from===c.id);
-  $('research-hero').innerHTML='<p class="eyebrow">'+safeText(c.id)+' · '+(legacyMode?'SIMULATION':replayMode?'COMPANY RESEARCH · REPLAY':'COMPANY RESEARCH')+'</p><h2 id="research-title">'+safeText(c.name)+'</h2><p class="dialog-copy">'+safeText(c.summary)+'</p>';
+  $('research-hero').innerHTML='<div class="research-lockup">'+companyMark(c.id)+'<div><p class="eyebrow">'+safeText(c.id)+' · '+(legacyMode?'SIMULATION':replayMode?'COMPANY RESEARCH · REPLAY':'COMPANY RESEARCH')+'</p><h2 id="research-title">'+safeText(c.name)+'</h2></div></div><p class="dialog-copy">'+safeText(c.summary)+'</p>';
   $('research-tabs').querySelectorAll('[data-research-tab]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.researchTab===researchPanel.tab)));
   let content='';
   switch(researchPanel.tab) {
     case 'overview': {
       const relationships=companyHighlights(c).slice(0,3);
-      content=marketFacts(c)+'<div class="research-block"><h3>What to watch</h3><p class="dialog-copy">'+safeText((legacyMode?c.downside:liveProfileNotes[c.id]) ?? c.summary)+'</p></div>'+
+      content=marketFacts(c)+'<div class="research-block"><h3>What to watch</h3><p class="dialog-copy">'+safeText((legacyMode?c.downside:indiaMarket?c.summary:liveProfileNotes[c.id]) ?? c.summary)+'</p></div>'+
         '<div class="research-block"><h3>Key connections</h3>'+relationships.map(link=>relationshipCard(c,link)).join('')+'</div>';
       break;
     }

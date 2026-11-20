@@ -78,13 +78,15 @@ function portfolioHoldings({positions}) {
     '</tr></thead><tbody>'+entries.map(p=>{
       const pct=p.pnl!==null && p.cost ? p.pnl/p.cost*100 : null;
       const performance=(value,formatter)=>'<td class="num '+(value===null?'flat':tone(value))+'">'+(value===null?'—':formatter(value))+'</td>';
-      return '<tr><td><button data-company="'+safeText(p.id)+'">'+safeText(p.id)+'</button></td><td class="num">'+p.quantity+'</td>'+
+      const instrument=p.company?'<button data-company="'+safeText(p.id)+'">'+safeText(p.id)+'</button>':safeText(p.id)+' <small>Archived</small>';
+      const action=p.company?'<button type="button" data-position-edit="'+safeText(p.id)+'">Adjust</button>':'—';
+      return '<tr><td>'+instrument+'</td><td class="num">'+p.quantity+'</td>'+
         '<td class="num">'+money(p.cost/p.quantity/100)+'</td><td class="num">'+money(p.cost/100)+'</td>'+
         '<td class="num">'+(p.quote?money(p.quote.mid)+(p.quote.recent?'':'*'):'—')+'</td>'+
         performance(p.day,signed)+performance(p.dayPnl,n=>money(n/100))+
         '<td class="num">'+(p.value===null?'—':money(p.value/100))+'</td>'+
         performance(p.pnl,n=>money(n/100))+performance(pct,signed)+
-        '<td><button type="button" data-position-edit="'+safeText(p.id)+'">Adjust</button></td></tr>';
+        '<td>'+action+'</td></tr>';
     }).join('')+'</tbody></table></div><p class="wallet-sub">* Last available quote. Day P&L estimates today’s price move on current shares.</p>';
 }
 

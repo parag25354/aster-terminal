@@ -2,14 +2,19 @@
 
 // Illustrative seeds for a reproducible showcase. None are exchange observations.
 const replaySeeds = {
-  SPY:[670,.36], MSFT:[508,.81], AMZN:[233,-.63], NVDA:[191,2.40],
+  MSFT:[508,.81], AMZN:[233,-.63], NVDA:[191,2.40],
   AMD:[226,1.28], AVGO:[351,.75], CRWV:[93,-1.20], ORCL:[202,-.40],
   GOOGL:[287,1.05], META:[603,.44], ANT:[101,1.67], AIAI:[100,1.10]
 };
-const replayOpen = Date.parse('2026-11-20T09:30:00-05:00');
+const indiaReplaySeeds = {
+  BHARTIARTL:[1920,-.38],TATACOMM:[1760,1.26],
+  TCS:[3210,.52],INFY:[1620,-.77],WIPRO:[253,.32],AIAI:[100,1.10]
+};
+const replayOpen = Date.parse(indiaMarket?'2026-11-20T09:15:00+05:30':'2026-11-20T09:30:00-05:00');
+const replayClose = Date.parse(indiaMarket?'2026-11-20T15:30:00+05:30':'2026-11-20T16:00:00-05:00');
 const replayStart = replayOpen + 60*60_000;
 const replayStep = 2*60_000;
-const lastReplayTick = 165;
+const lastReplayTick = Math.ceil((replayClose-replayStart)/replayStep);
 const replayStoryId = 'replay-cloud-review';
 
 const replayNews = [
@@ -23,36 +28,42 @@ const replayNews = [
       NVDA:['down','The stress test assumes a NVIDIA decline of 5%.'],
       AIAI:['down','The demo basket has overlapping NVIDIA and CoreWeave exposure.']
     }
-  },
-  {
-    id:'replay-benchmark-check',title:'Scenario: Broad market holds steady at the open',time:'2026-11-20T09:42:00-05:00',
-    source:'Showcase scenario',topic:'Benchmark',scenario:true,
-    body:'The hypothetical benchmark session keeps broad-market moves small while individual AI stocks react more strongly.',
-    impacts:{
-      SPY:['flat','This is the simulated benchmark tape for the showcase.'],
-      NVDA:['flat','Benchmark resilience does not remove company-specific exposure.']
-    }
   }
 ];
 
+const indiaReplayNews = [{
+  id:indiaStress.story,title:'Scenario: GPU deliveries slow',time:'2026-11-20T09:51:00+05:30',
+  source:'Showcase scenario',topic:'AI infrastructure',scenario:true,
+  body:'Assume planned GPU deliveries slip. Tata Communications and Reliance have disclosed collaborations with NVIDIA. The delay and modeled price moves are illustrative.',
+  impacts:{
+    NVDA:['flat','The scenario assumes a supply delay. NVIDIA is shown as an external partner in this workspace.'],
+    TATACOMM:['down','The stress test assumes Tata Communications declines 5%.'],
+    RELIANCE:['down','The stress test assumes Reliance declines 8%.'],
+    AIAI:['down','The demo basket has exposure to both companies.']
+  }
+}];
+
 function replayDataset() {
-  const live = liveDataset();
+  const live = indiaMarket?indiaDataset():liveDataset();
+  const stress = indiaMarket?indiaStress:replayStress;
   const group = 0;
-  const basket = ['AIAI','Aster AI Basket','Demo allocation','Demo basket','An illustrative basket used to demonstrate overlap. The stress-test weights are 40% NVIDIA, 30% CoreWeave, and 30% other assets. It is not a listed fund.'];
+  const basket = [stress.fund,stress.fundName,'Demo allocation','Demo basket',
+    'The illustrative basket holds 40% '+stress.chipName+', 30% '+stress.cloudName+', and 30% other assets.'];
   const groups = live.groups.map(([name,rows],index)=>[name,index===group?[...rows,basket]:rows]);
   const companies = new Map(live.companies);
   const [id,name,sector,listing,summary] = basket;
   companies.set(id,{id,name,sector,listing,summary,group,index:groups[group][1].length-1});
-  for(const [symbol,[price,change]] of Object.entries(replaySeeds)) {
+  const prices={...coverageReplayPrices(indiaMarket?'india':'us'),...(indiaMarket?indiaReplaySeeds:replaySeeds)};
+  for(const [symbol,[price,change]] of Object.entries(prices)) {
     companies.set(symbol,{...companies.get(symbol),price,change});
   }
   const links = [
     ...live.links,
-    ...[['NVDA','40% demo weight'],['CRWV','30% demo weight']].map(([to,value],index)=>({
+    ...[[stress.chip,'40% demo weight'],[stress.cloud,'30% demo weight']].map(([to,value],index)=>({
       id:live.links.length+index,from:id,to,type:'holding',label:'Showcase basket allocation',value,date:'Showcase assumption'
     }))
   ];
-  return {groups,companies,links,articles:[...replayNews,...live.articles],research:live.research};
+  return {groups,companies,links,articles:[...(indiaMarket?indiaReplayNews:replayNews),...live.articles],research:live.research};
 }
 
 const exampleStress = {

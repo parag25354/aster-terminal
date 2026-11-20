@@ -5,9 +5,10 @@ const market = {
   newsJobs:new Map(), historyJobs:new Map(), ticks:0, replay:null, stream:null, liveTransport:'snapshot'
 };
 const safeText = value => String(value ?? '').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[ch]);
-const stateKey = name => 'aster:' + activeMode + ':' + name + ':v1';
-const currency = () => legacyMode?'INR':'USD';
-const money = amount => new Intl.NumberFormat(legacyMode?'en-IN':'en-US',{currency:currency(),style:'currency',minimumFractionDigits:2,maximumFractionDigits:2}).format(amount);
+const stateKey = name => 'aster:' + activeMode + (indiaMarket?':india':'') + ':' + name + ':v1';
+const usesRupees = () => legacyMode || indiaMarket;
+const currency = () => usesRupees()?'INR':'USD';
+const money = amount => new Intl.NumberFormat(usesRupees()?'en-IN':'en-US',{currency:currency(),style:'currency',minimumFractionDigits:2,maximumFractionDigits:2}).format(amount);
 const tone = value => value > 0 ? (value>=3?'up intense':'up') : value < 0 ? (value<=-3?'down intense':'down') : 'flat';
 const timeLabel = value => {
   const date = new Date(value);
@@ -25,7 +26,7 @@ async function requestMarket(op,symbol) {
   return data;
 }
 
-const tapeTime = (tick=market.ticks) => replayStart+tick*replayStep;
+const tapeTime = (tick=market.ticks) => Math.min(replayClose,replayStart+tick*replayStep);
 
 function replayPrice(c,tick) {
   const progress=Math.max(-1,tick/30);
@@ -67,7 +68,7 @@ function renderStatus() {
     el.dataset.state='sample';
     if(!$('replay-toggle')) {
       el.innerHTML='<span><strong>'+(replayMode?'Market Replay':'Sample session')+'</strong> · '+
-        (replayMode?'Illustrative quotes · Virtual USD':'Offline prices · Virtual funds')+'</span>'+
+        (replayMode?'Illustrative quotes · Virtual '+currency():'Offline prices · Virtual funds')+'</span>'+
         '<span class="replay-actions"><button type="button" id="replay-toggle" data-replay="toggle">Play replay</button>'+
         '<button type="button" id="replay-step" data-replay="step">Step</button>'+
         (replayMode?'<button type="button" data-replay="restart">Restart</button>':'')+
@@ -83,7 +84,7 @@ function renderStatus() {
   const session=regularSession();
   if(publicExchange()) {
     el.dataset.state='public';
-    el.innerHTML='<span><strong>'+session.state+'</strong> · '+session.time+' · TradingView delayed quotes · Read-only</span>'+
+    el.innerHTML='<span><strong>'+session.state+'</strong> · '+session.time+' · '+exchangeDataLabel+' · Read-only</span>'+
       '<a class="replay-link" href="'+modeLink('replay',{page:'trading',symbol:state.selected})+'">Practice in Replay</a>';
     return;
   }
@@ -102,7 +103,7 @@ function renderStatus() {
 }
 
 function readWatch() {
-  const defaults=legacyMode?['ATLS','GRID','INNO','LUMN']:['NVDA','CRWV','SPY','MSFT','ANT'];
+  const defaults=legacyMode?['ATLS','GRID','INNO','LUMN']:indiaMarket?['RELIANCE','TCS','INFY','BHARTIARTL']:['NVDA','CRWV','MSFT','ANT'];
   try {
     const list=JSON.parse(localStorage.getItem(stateKey('watch')));
     return Array.isArray(list)?list.filter(id=>companies.has(id)):defaults;
@@ -360,19 +361,19 @@ function renderPerformance(c) {
     return;
   }
   const project=period==='1H'||period==='1D'?'intraday':'daily';
-  const quotesLook=mark(c);
+  const quotesLook=mark(c), peer=chartPeer(c);
   $('detail').innerHTML=periodButtons()+'<p class="empty">Loading price history…</p>';
-  Promise.allSettled([getHistory(c.symbol,project),c.symbol==='SPY'?Promise.resolve([]):getHistory('SPY',project),period==='1D'?getHistory(c.symbol,'daily'):Promise.resolve([])]).then(results=>{
+  Promise.allSettled([getHistory(c.symbol,project),peer?getHistory(peer.symbol,project):Promise.resolve([]),period==='1D'?getHistory(c.symbol,'daily'):Promise.resolve([])]).then(results=>{
     if(generation!==historyRenderId || state.selected!==c.id || state.tab!=='performance')return;
-    const [seriesResult,benchmarkResult,statsResult]=results;
+    const [seriesResult,peerResult,statsResult]=results;
     if(seriesResult.status==='rejected'){
       $('detail').innerHTML=periodButtons()+'<p class="empty">'+safeText(seriesResult.reason.message)+'</p>';
       return;
     }
     const series=seriesResult.value;
-    const benchmark=benchmarkResult.status==='fulfilled'?benchmarkResult.value:[];
+    const peerSeries=peerResult.status==='fulfilled'?peerResult.value:[];
     const daily=statsResult.status==='fulfilled'?statsResult.value:[];
-    renderRealChart(c,period,series,benchmark,daily,quotesLook);
+    renderRealChart(c,period,series,peer,peerSeries,daily,quotesLook);
   });
 }
 
@@ -384,41 +385,49 @@ function selectPeriodBars(bars,period) {
   return bars.slice(period==='1M'?-22:-253);
 }
 
-function renderRealChart(c,period,series,benchmark,statsDaily,q) {
+function chartPeer(company) {
+  const highlights=companyHighlights(company);
+  const comparisons=[...highlights.filter(link=>link.type==='peer'),...highlights.filter(link=>link.type!=='peer')];
+  const linked=comparisons.map(link=>companies.get(link.from===company.id?link.to:link.from))
+    .find(candidate=>hasMarketSymbol(candidate) && candidate.listing==='Listed');
+  return linked ?? [...companies.values()].find(candidate=>candidate.id!==company.id &&
+    candidate.group===company.group && hasMarketSymbol(candidate) && candidate.listing==='Listed');
+}
+function seriesMove(values) {
+  return values.length>=2?(values.at(-1)/values[0]-1)*100:null;
+}
+function renderRealChart(c,period,series,peer,peerSeries,statsDaily,q) {
   const selected=selectPeriodBars(series,period);
   const daily=period==='1D'?statsDaily:series;
   const returns=paper.returnWindows(daily,period,series);
   const counts=paper.countReturns(returns);
-  const broad=new Map(benchmark.map(b=>[period==='1H'||period==='1D'?b.at:b.session,b.close]));
-  const pair=selected.flatMap(bar=>{
-    const key=period==='1H'||period==='1D'?bar.at:bar.session;
-    return broad.has(key)?[[bar.close,broad.get(key)]]:[];
-  });
-  const hasBenchmark=pair.length>=2;
-  const points=hasBenchmark?pair.map(p=>p[0]):selected.map(b=>b.close);
-  const benchmarkPoints=hasBenchmark?pair.map(p=>p[1]):[];
-  const move=points.length>=2?(points.at(-1)/points[0]-1)*100:null;
-  const benchmarkMove=hasBenchmark?(benchmarkPoints.at(-1)/benchmarkPoints[0]-1)*100:null;
+  const key=bar=>period==='1H'||period==='1D'?bar.at:bar.session;
+  const peerIndex=new Map(peerSeries.map(bar=>[key(bar),bar.close]));
+  const aligned=selected.filter(bar=>peerIndex.has(key(bar)));
+  const points=(aligned.length>=2?aligned:selected).map(bar=>bar.close);
+  const peerPoints=aligned.length>=2?aligned.map(bar=>peerIndex.get(key(bar))):[];
+  const move=seriesMove(points);
+  const peerMove=seriesMove(peerPoints);
   let history='<p class="performance-notice">No completed windows for this timeframe yet.</p>';
   if(returns.length) {
     const names=['up','flat','down'];
     history='<div class="odds"><h3 class="eyebrow">OBSERVED HISTORICAL WINDOWS</h3><div class="odds-bar">'+counts.map(n=>'<span style="width:'+n/returns.length*100+'%"></span>').join('')+'</div><div class="odds-label">'+counts.map((n,i)=>'<span class="'+names[i]+'">'+(n/returns.length*100).toFixed(1)+'% '+names[i]+'</span>').join('')+'</div></div><p class="performance-notice">'+returns.length+' overlapping historical windows · flat within ±0.1%. Price changes omit dividends.</p>';
   }
-  const comparison=benchmarkMove!==null?'<span class="spy">SPY '+signed(benchmarkMove)+'</span><span>vs SPY '+(move-benchmarkMove>=0?'+':'−')+Math.abs(move-benchmarkMove).toFixed(2)+' pp</span>':'';
+  const comparison=peerMove!==null?'<span class="chart-peer">'+peer.id+' '+signed(peerMove)+'</span>':'';
   const current=q?money(q.mid):selected.length?money(selected.at(-1).close):'—';
   $('detail').innerHTML=periodButtons()+'<div class="performance-meta"><span class="price-num">'+current+'</span>'+(move===null?'':'<strong class="'+tone(move)+'">'+signed(move)+'</strong>')+'</div>'+
     (points.length>=2?'<canvas class="mini-chart" id="stock-chart" role="img" aria-label="'+safeText(c.name)+' market price history"></canvas><div class="chart-legend"><span>'+c.id+' · base 100</span>'+comparison+'</div>':'<p class="empty">No comparable price bars for this period.</p>')+
     (selected.length?'<p class="performance-notice">Latest completed bar: '+safeText(timeLabel(selected.at(-1).at))+'</p>':'')+history;
-  if(points.length>=2)drawMarketChart(points,benchmarkPoints);
+  if(points.length>=2)drawMarketChart(points,peerPoints);
 }
-function drawMarketChart(points,broad,peer=[]) {
+function drawMarketChart(points,peer=[]) {
   const canvas=$('stock-chart');
   const width=canvas.clientWidth,height=canvas.clientHeight,dpr=Math.min(devicePixelRatio||1,2);
   canvas.width=width*dpr;canvas.height=height*dpr;
   const ctx=canvas.getContext('2d');ctx.scale(dpr,dpr);
   const rebased=series=>series.map(value=>value/series[0]*100);
-  const a=rebased(points), b=rebased(broad), related=rebased(peer);
-  const lo=Math.min(...a,...b,...related)-.05,hi=Math.max(...a,...b,...related)+.05;
+  const a=rebased(points), related=rebased(peer);
+  const lo=Math.min(...a,...related)-.05,hi=Math.max(...a,...related)+.05;
   ctx.strokeStyle=isLightTheme()?'#dce5e9':'#363640';
   for(let y=18;y<height;y+=22){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(width,y);ctx.stroke();}
   function draw(series,color) {
@@ -429,7 +438,6 @@ function drawMarketChart(points,broad,peer=[]) {
     });
     ctx.stroke();
   }
-  if(b.length>1)draw(b,isLightTheme()?'#6550a0':'#bdabfb');
   if(related.length>1)draw(related,isLightTheme()?'#2468a2':'#8dc6ff');
   draw(a,a.at(-1)<100?(isLightTheme()?'#af2944':'#ff8999'):a.at(-1)>100?(isLightTheme()?'#087248':'#7ee0a8'):(isLightTheme()?'#536774':'#a4a4b6'));
 }
@@ -514,24 +522,43 @@ function relationshipCard(c, link) {
   const peer = companies.get(outgoing ? link.to : link.from);
   const directions = {
     partner: 'Partner',
+    peer: 'Industry peer',
     holding: outgoing ? 'Fund holds' : 'Held by fund',
     funding: outgoing ? 'Invests in' : 'Investor',
     spend: outgoing ? 'Supplier' : 'Customer'
   };
   const metadata = [link.value, link.date].filter(Boolean).join(' · ');
-  const source = link.url
-    ? '<a class="rel-source" href="'+safeText(link.url)+'" target="_blank" rel="noopener noreferrer" aria-label="Read source for '+safeText(peer.name)+'">Source</a>'
-    : '';
   return '<div class="rel-wrap"><button class="relation" type="button" data-company="'+safeText(peer.id)+'">'+
-    '<i class="dot '+link.type+'"></i><span class="content"><strong>'+safeText(peer.name)+'</strong>'+
+    '<i class="dot '+link.type+'"></i>'+companyMark(peer.id)+'<span class="content"><strong>'+safeText(peer.name)+'</strong>'+
     '<small>'+directions[link.type]+' · '+safeText(link.label)+(metadata?'<br>'+safeText(metadata):'')+'</small></span>'+
-    '<span class="mark" aria-hidden="true">›</span></button>'+source+'</div>';
+    '<span class="mark" aria-hidden="true">›</span></button>'+relationshipSource(link,peer)+'</div>';
+}
+
+function relationshipSource(link, peer) {
+  return link.url ? '<a class="rel-source" href="'+safeText(link.url)+'" target="_blank" rel="noopener noreferrer" aria-label="Read source for the link with '+safeText(peer.name)+'">Source <span aria-hidden="true">↗</span></a>' : '';
+}
+
+function connectionDiagram(c, link) {
+  const labels={funding:'Invests in',spend:'Buys from',holding:'Fund holds',partner:'Partners',peer:'Industry peers'};
+  const endpoint = id => {
+    const name = companies.get(id).name;
+    const label = companyMark(id)+'<span>'+safeText(id)+'</span>';
+    return id===c.id ? '<span class="connection-company current" title="'+safeText(name)+'">'+label+'</span>' :
+      '<button type="button" class="connection-company" data-company="'+safeText(id)+'" aria-label="Explore '+safeText(name)+'" title="'+safeText(name)+'">'+label+'</button>';
+  };
+  const peer = companies.get(link.from===c.id?link.to:link.from);
+  const metadata = [link.value,link.date].filter(Boolean).join(' · ');
+  return '<figure class="connection-figure '+link.type+'"><div class="connection-nodes">'+
+    endpoint(link.from)+'<div class="connection-track'+(isDirected(link)?' directed':'')+'"><span>'+
+    labels[link.type]+'</span><i aria-hidden="true"></i></div>'+endpoint(link.to)+'</div>'+
+    '<figcaption><span>'+safeText(link.label)+(metadata?'<small>'+safeText(metadata)+'</small>':'')+'</span>'+
+    relationshipSource(link,peer)+'</figcaption></figure>';
 }
 
 function companyHighlights(c) {
   const nearby = links.filter(link=>link.from===c.id || link.to===c.id);
   const picked = [];
-  for(const type of ['funding','spend','holding','partner']) {
+  for(const type of ['funding','spend','holding','partner','peer']) {
     const match = nearby.find(link=>link.type===type && link.value) ?? nearby.find(link=>link.type===type);
     if(match)picked.push(match);
   }
@@ -546,9 +573,10 @@ function hasMarketSymbol(c) {
 function companyInstrument(c) {
   if(c.listing==='Fund') return 'Exchange-traded fund';
   if(c.listing==='Demo basket') return 'Demo basket';
+  if(c.listing==='Global partner') return 'Global partner';
   if(c.listing==='Private') return 'Private company';
   if(c.listing==='Research') return 'Research entity';
-  return legacyMode ? 'Sample listed stock' : 'US equity';
+  return legacyMode?'Sample listed stock':indiaMarket?'Indian equity':'US equity';
 }
 
 function pricePlaceholder(c) {
@@ -564,9 +592,12 @@ function renderCompanyOverview(c) {
   const news = companyNews(c.id);
   const note = legacyMode
     ? (c.downside ? '<p><strong>Growth driver:</strong> '+safeText(c.upside)+'.</p><p class="profile-note"><strong>What to watch:</strong> '+safeText(c.downside)+'.</p>' : '<p>Follow the investors and suppliers below to see how changes at this entity could reach the demo portfolio.</p>')
-    : '<p>'+safeText(liveProfileNotes[c.id] ?? c.summary)+'</p>';
+    : '<p>'+safeText((indiaMarket?c.summary:liveProfileNotes[c.id]) ?? c.summary)+'</p>';
 
   $('detail').innerHTML =
+    '<section class="profile-section"><div class="profile-heading"><h3>Key connections</h3>'+
+    (links.length?'<button type="button" class="profile-all" data-tab="connections">All '+linksCount(c)+' links <span aria-hidden="true">→</span></button>':'')+
+    '</div>'+(links.length?links.slice(0,2).map(link=>connectionDiagram(c,link)).join(''):'<p>No relationships are mapped for this entity.</p>')+'</section>'+
     '<section class="profile-section"><h3>Market snapshot</h3><dl class="profile-facts">'+
     '<div><dt>Instrument</dt><dd>'+companyInstrument(c)+'</dd></div>'+
     '<div><dt>Quote midpoint</dt><dd id="profile-price">'+safeText(pricePlaceholder(c))+'</dd></div>'+
@@ -574,8 +605,6 @@ function renderCompanyOverview(c) {
     '<div><dt>Paper position</dt><dd>'+(position?position.quantity+' shares':'No shares')+'</dd></div>'+
     '</dl><p id="profile-quote-time" class="performance-notice"></p></section>'+
     '<section class="profile-section"><h3>Why this company matters</h3>'+note+'</section>'+
-    '<section class="profile-section"><h3>Key connections</h3>'+
-    (links.length ? links.map(link=>relationshipCard(c,link)).join('') : '<p>No relationships are mapped for this entity.</p>')+'</section>'+
     (news.length ? '<section class="profile-section"><h3>News and disclosures</h3>'+news.slice(0,2).map(article=>headline(article,c.id)).join('')+'</section>' : '');
 }
 
@@ -586,8 +615,9 @@ function openQuickCard() {
   const record = readWatch().includes(c.id);
   const movement=sampleDayMove(c);
   panel.innerHTML = '<button class="close" data-quick-close aria-label="Close company card">×</button>'+
-    '<p class="eyebrow">'+safeText(c.id)+'</p><h2 id="popover-title" tabindex="-1">'+safeText(c.name)+'</h2>'+
-    '<p class="node-type">'+safeText(c.sector)+' · '+companyInstrument(c)+'</p>'+
+    '<div class="peek-company">'+companyMark(c.id)+'<div><p class="eyebrow">'+safeText(c.id)+'</p>'+
+    '<h2 id="popover-title" tabindex="-1">'+safeText(c.name)+'</h2>'+
+    '<p class="node-type">'+safeText(c.sector)+' · '+companyInstrument(c)+'</p></div></div>'+
     '<p class="pop-summary">'+safeText(c.summary)+'</p>'+
     '<dl><div><dt>Quote midpoint</dt><dd id="quick-price">'+safeText(pricePlaceholder(c))+'</dd></div>'+
     '<div><dt>'+ (movement!==null ? 'Sample day move</dt><dd id="quick-move" class="'+tone(movement)+'">'+signed(movement) : 'Mapped relationships</dt><dd>'+linksCount(c)) +'</dd></div></dl>'+
@@ -596,7 +626,7 @@ function openQuickCard() {
     '<button class="btn secondary compact" data-pop-tab="performance">Chart</button>'+
     '<button class="btn secondary compact" data-pop-tab="news">News</button>'+
     (hasMarketSymbol(c)?'<button class="btn secondary compact" data-pop-tab="trade">Trade</button><button class="btn secondary compact" data-basket-symbol="'+c.id+'">Add to basket</button>':'')+'</div>'+
-    (links.length?'<section class="peek-links"><h3>Key connections</h3>'+links.slice(0,2).map(link=>relationshipCard(c,link)).join('')+'</section>':'')+
+    (links.length?'<section class="peek-links"><h3>Key connections</h3>'+links.slice(0,2).map(link=>connectionDiagram(c,link)).join('')+'</section>':'')+
     '<div id="quick-news" class="peek-links"></div>'+
     '<button class="watch-button" data-watch-toggle aria-pressed="'+record+'">'+(record?'Remove from watchlist':'Add to watchlist')+'</button>';
   panel.hidden = false;
